@@ -738,6 +738,104 @@ func TestEvaluate_PublicKeysFnError(t *testing.T) {
 	}
 }
 
+func TestUserOrServiceEndpoint(t *testing.T) {
+	resetEndpointProfiles()
+
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+
+	profile := GetEndpointProfile("/api/route")
+	if !profile.AllowService {
+		t.Error("expected AllowService to be true")
+	}
+	if !profile.AllowUser {
+		t.Error("expected AllowUser to be true")
+	}
+	if len(profile.AllowedScopes) != 1 || profile.AllowedScopes[0] != "routing:execute" {
+		t.Errorf("expected scope 'routing:execute', got %v", profile.AllowedScopes)
+	}
+}
+
+func TestUserOrServiceEndpoint_EmptyScopes(t *testing.T) {
+	resetEndpointProfiles()
+
+	UserOrServiceEndpoint("/api/route", nil)
+
+	profile := GetEndpointProfile("/api/route")
+	if len(profile.AllowedScopes) != 1 || profile.AllowedScopes[0] != "*" {
+		t.Error("expected wildcard scope when no scopes provided")
+	}
+}
+
+// TestEvaluate_UserOrService_VerifiedUser confirms a verified user JWT is accepted.
+func TestEvaluate_UserOrService_VerifiedUser(t *testing.T) {
+	resetEndpointProfiles()
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+	profile := GetEndpointProfile("/api/route")
+
+	token := createTestUserToken("user-abc", false, "standard", true)
+	claims, err := profile.Evaluate(&token, getTestPublicKeys, testLogger)
+	if err != nil {
+		t.Fatalf("expected verified user to be accepted, got: %v", err)
+	}
+	if claims.Subject != "user-abc" {
+		t.Errorf("expected subject 'user-abc', got '%s'", claims.Subject)
+	}
+}
+
+// TestEvaluate_UserOrService_UnverifiedUser confirms an unverified user JWT is rejected.
+func TestEvaluate_UserOrService_UnverifiedUser(t *testing.T) {
+	resetEndpointProfiles()
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+	profile := GetEndpointProfile("/api/route")
+
+	token := createTestUserToken("user-unverified", false, "standard", false)
+	_, err := profile.Evaluate(&token, getTestPublicKeys, testLogger)
+	if err != ErrUserNotVerified {
+		t.Errorf("expected ErrUserNotVerified for unverified user, got: %v", err)
+	}
+}
+
+// TestEvaluate_UserOrService_ServiceTokenCorrectScope confirms a service token with correct scope is accepted.
+func TestEvaluate_UserOrService_ServiceTokenCorrectScope(t *testing.T) {
+	resetEndpointProfiles()
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+	profile := GetEndpointProfile("/api/route")
+
+	token := createTestServiceToken("swayrider-api", []string{"routing:execute", "search:execute"})
+	claims, err := profile.Evaluate(&token, getTestPublicKeys, testLogger)
+	if err != nil {
+		t.Fatalf("expected service token with correct scope to be accepted, got: %v", err)
+	}
+	if claims.Subject != "swayrider-api" {
+		t.Errorf("expected subject 'swayrider-api', got '%s'", claims.Subject)
+	}
+}
+
+// TestEvaluate_UserOrService_ServiceTokenWrongScope confirms a service token with wrong scope is rejected.
+func TestEvaluate_UserOrService_ServiceTokenWrongScope(t *testing.T) {
+	resetEndpointProfiles()
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+	profile := GetEndpointProfile("/api/route")
+
+	token := createTestServiceToken("other-service", []string{"mail:send"})
+	_, err := profile.Evaluate(&token, getTestPublicKeys, testLogger)
+	if err != ErrServiceClientNotAllowed {
+		t.Errorf("expected ErrServiceClientNotAllowed for wrong scope, got: %v", err)
+	}
+}
+
+// TestEvaluate_UserOrService_NoToken confirms a missing token is rejected.
+func TestEvaluate_UserOrService_NoToken(t *testing.T) {
+	resetEndpointProfiles()
+	UserOrServiceEndpoint("/api/route", []string{"routing:execute"})
+	profile := GetEndpointProfile("/api/route")
+
+	_, err := profile.Evaluate(nil, getTestPublicKeys, testLogger)
+	if err != ErrNoAuthToken {
+		t.Errorf("expected ErrNoAuthToken, got: %v", err)
+	}
+}
+
 // =============================================================================
 // Error Variables Tests
 // =============================================================================

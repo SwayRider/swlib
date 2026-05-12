@@ -73,6 +73,12 @@ type EndpointProfile struct {
 	// If no scopes are provided, no service clients are allowed
 	// If "*" is provided, all service clients are allowed
 	AllowedScopes []string
+
+	// AllowUser allows verified user JWTs alongside service client tokens.
+	// Set by UserOrServiceEndpoint to signal intent: this endpoint accepts
+	// either token type. Has no effect on evaluation — it exists for clarity
+	// and for callers that need to inspect the profile.
+	AllowUser bool
 }
 
 // Global registry of endpoint profiles.
@@ -233,6 +239,34 @@ func ServiceClientEndpoint(endpoint string, scopes []string, method ...string) {
 			continue
 		}
 		setEndpointProfile(k, methods[i], EndpointProfile{AllowService: true, AllowedScopes: scopes})
+	}
+}
+
+// UserOrServiceEndpoint registers an endpoint that accepts either a verified
+// user JWT or a service client token holding all of the specified scopes.
+// Use this on endpoints that the API gateway calls with a service token on
+// behalf of users, but that must remain directly callable with a user JWT
+// for dev/ops access.
+func UserOrServiceEndpoint(endpoint string, scopes []string, method ...string) {
+	if len(scopes) == 0 {
+		scopes = append(scopes, "*")
+	}
+
+	keys, methods := endpointKeys(endpoint, method...)
+	for i, k := range keys {
+		p, ok := getEndpointProfile(k)
+		if ok {
+			p.AllowService = true
+			p.AllowedScopes = scopes
+			p.AllowUser = true
+			setEndpointProfile(k, methods[i], p)
+			continue
+		}
+		setEndpointProfile(k, methods[i], EndpointProfile{
+			AllowService:  true,
+			AllowedScopes: scopes,
+			AllowUser:     true,
+		})
 	}
 }
 
