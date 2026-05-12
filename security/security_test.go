@@ -13,6 +13,7 @@ import (
 	jwt5 "github.com/golang-jwt/jwt/v5"
 	"github.com/swayrider/swlib/jwt"
 	log "github.com/swayrider/swlib/logger"
+	"google.golang.org/grpc/metadata"
 )
 
 // Test RSA key pair for JWT tests
@@ -927,5 +928,95 @@ func BenchmarkGetEndpointProfileForMethod(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		GetEndpointProfileForMethod("/api/bench", "GET")
+	}
+}
+
+// =============================================================================
+// ResolveUserID / ResolveAccountLevel Tests
+// =============================================================================
+
+func TestResolveUserID_UserJWT(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "user-abc"},
+		SwayRiderClaims:  jwt.NewSwayRiderUserClaims(false, "standard"),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+
+	if got := ResolveUserID(ctx); got != "user-abc" {
+		t.Errorf("expected 'user-abc', got %q", got)
+	}
+}
+
+func TestResolveUserID_ServiceToken_WithMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "swayrider-api"},
+		SwayRiderClaims:  jwt.NewSwayRiderServiceClaims([]string{"routing:execute"}),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("x-user-id", "user-from-gateway"))
+
+	if got := ResolveUserID(ctx); got != "user-from-gateway" {
+		t.Errorf("expected 'user-from-gateway', got %q", got)
+	}
+}
+
+func TestResolveUserID_ServiceToken_NoMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "swayrider-api"},
+		SwayRiderClaims:  jwt.NewSwayRiderServiceClaims([]string{"routing:execute"}),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+
+	if got := ResolveUserID(ctx); got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+func TestResolveUserID_NoClaims(t *testing.T) {
+	if got := ResolveUserID(context.Background()); got != "" {
+		t.Errorf("expected empty string, got %q", got)
+	}
+}
+
+func TestResolveAccountLevel_UserJWT(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "user-abc"},
+		SwayRiderClaims:  jwt.NewSwayRiderUserClaims(false, "premium"),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+
+	if got := ResolveAccountLevel(ctx); got != "premium" {
+		t.Errorf("expected 'premium', got %q", got)
+	}
+}
+
+func TestResolveAccountLevel_ServiceToken_WithMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "swayrider-api"},
+		SwayRiderClaims:  jwt.NewSwayRiderServiceClaims([]string{"search:execute"}),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("x-account-level", "premium"))
+
+	if got := ResolveAccountLevel(ctx); got != "premium" {
+		t.Errorf("expected 'premium', got %q", got)
+	}
+}
+
+func TestResolveAccountLevel_ServiceToken_NoMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "swayrider-api"},
+		SwayRiderClaims:  jwt.NewSwayRiderServiceClaims([]string{"search:execute"}),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+
+	if got := ResolveAccountLevel(ctx); got != "standard" {
+		t.Errorf("expected 'standard', got %q", got)
+	}
+}
+
+func TestResolveAccountLevel_NoClaims(t *testing.T) {
+	if got := ResolveAccountLevel(context.Background()); got != "standard" {
+		t.Errorf("expected 'standard', got %q", got)
 	}
 }
