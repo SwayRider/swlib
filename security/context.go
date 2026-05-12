@@ -29,6 +29,7 @@ import (
 	"context"
 
 	"github.com/swayrider/swlib/jwt"
+	"google.golang.org/grpc/metadata"
 )
 
 // ContextKey is a string type used for context value keys to avoid collisions.
@@ -93,4 +94,48 @@ func GetSecure(ctx context.Context) (s bool, ok bool) {
 	iface := ctx.Value(SecureKey)
 	s, ok = iface.(bool)
 	return
+}
+
+// ResolveUserID returns the authenticated user ID for the request.
+//
+// When the caller is the API gateway (service token), the gateway forwards
+// the original user identity as x-user-id gRPC metadata. When the caller
+// presents a user JWT directly (dev/ops access), the subject claim is used.
+// Returns an empty string if neither is available.
+func ResolveUserID(ctx context.Context) string {
+	claims, ok := GetClaims(ctx)
+	if !ok || claims == nil {
+		return ""
+	}
+	if _, isService := claims.SwayRiderClaims.(*jwt.SwayRiderServiceClaims); isService {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if ok {
+			if vals := md.Get("x-user-id"); len(vals) > 0 {
+				return vals[0]
+			}
+		}
+		return ""
+	}
+	return claims.Subject
+}
+
+// ResolveAccountLevel returns the account level for the request.
+//
+// When the caller is the API gateway (service token), the gateway forwards
+// the original user's account level as x-account-level gRPC metadata.
+// When the caller presents a user JWT directly, the account level is read
+// from the user claims. Returns "standard" if neither is available.
+func ResolveAccountLevel(ctx context.Context) string {
+	claims, ok := GetClaims(ctx)
+	if !ok || claims == nil {
+		return "standard"
+	}
+	if userClaims, ok := claims.SwayRiderClaims.(*jwt.SwayRiderUserClaims); ok {
+		return userClaims.AccountLevel
+	}
+	md, _ := metadata.FromIncomingContext(ctx)
+	if vals := md.Get("x-account-level"); len(vals) > 0 {
+		return vals[0]
+	}
+	return "standard"
 }
