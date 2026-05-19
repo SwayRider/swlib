@@ -368,15 +368,12 @@ func (p EndpointProfile) evaluateServiceClaims(
 			return
 		}
 
-		found := false
 		for _, scope := range p.AllowedScopes {
-			found = slices.Contains(serviceClaims.Scopes, scope)
-			break
-		}
-		if !found {
-			err = ErrServiceClientNotAllowed
-			lg.Debugf("Missing correct scope (%v): %v", p.AllowedScopes, err)
-			return
+			if !slices.Contains(serviceClaims.Scopes, scope) {
+				err = ErrServiceClientNotAllowed
+				lg.Debugf("Missing required scope %q (%v): %v", scope, p.AllowedScopes, err)
+				return
+			}
 		}
 	}
 	return
