@@ -5,10 +5,15 @@
 //
 // # Cookie Naming
 //
-// All cookies are namespaced with "com.hevanto-it.swayrider." prefix to avoid
-// conflicts with other applications. Use FullCookieName to get the full name.
+// All cookies are namespaced with a configurable prefix to avoid conflicts
+// with other applications. Call SetNamespace at startup to configure the
+// prefix; the default is "com.hevanto-it.swayrider". Use FullCookieName
+// to get the full namespaced name.
 //
 // # Usage
+//
+//	// Configure namespace at startup (call once before serving requests)
+//	cookies.SetNamespace("com.example.myapp")
 //
 //	// Create cookie options from request context
 //	opts := cookies.NewCookieOptsFromContext(ctx)
@@ -45,11 +50,32 @@ var (
 	TTLRemeberLogin = 30 * 24 * time.Hour
 )
 
+// cookieNamespace is the prefix applied to all cookie names.
+var cookieNamespace = "com.hevanto-it.swayrider"
+
+// SetNamespace sets the namespace prefix used for all cookie names.
+// Call this once at service startup before any requests are handled.
+// An empty string disables namespacing (cookies use their bare names).
+func SetNamespace(ns string) {
+	cookieNamespace = ns
+}
+
+// FullCookieName returns the full namespaced cookie name.
+// If the namespace is empty the bare name is returned unchanged.
+func FullCookieName(name string) string {
+	if cookieNamespace == "" {
+		return name
+	}
+	return fmt.Sprintf("%s.%s", cookieNamespace, name)
+}
+
 // CookieOpts configures cookie behavior including security and lifetime settings.
 type CookieOpts struct {
-	secure bool          // Whether to set the Secure flag (HTTPS only)
-	domain string        // Domain restriction for the cookie
-	ttl    time.Duration // Time-to-live for the cookie
+	secure   bool          // Whether to set the Secure flag (HTTPS only)
+	domain   string        // Domain restriction for the cookie
+	ttl      time.Duration // Time-to-live for the cookie
+	path     string        // Path scope; overrides default "/" when non-empty
+	sameSite http.SameSite // SameSite policy; overrides default Lax when non-zero
 }
 
 // NewCookieOpts creates CookieOpts with default values (not secure, no domain, default TTL).
@@ -90,10 +116,14 @@ func (co *CookieOpts) SetTTL(ttl time.Duration) {
 	co.ttl = ttl
 }
 
-// FullCookieName returns the full namespaced cookie name.
-// All SwayRider cookies are prefixed with "com.hevanto-it.swayrider."
-func FullCookieName(name string) string {
-	return fmt.Sprintf("com.hevanto-it.swayrider.%s", name)
+// SetPath overrides the default path "/" for the cookie.
+func (co *CookieOpts) SetPath(path string) {
+	co.path = path
+}
+
+// SetSameSite sets the SameSite policy for the cookie.
+func (co *CookieOpts) SetSameSite(s http.SameSite) {
+	co.sameSite = s
 }
 
 // NewServerCookie creates a new HTTP cookie with the given name and data.
@@ -101,7 +131,7 @@ func FullCookieName(name string) string {
 // Cookies are created with HttpOnly flag and SameSite=Lax by default.
 //
 // If opts is provided, the first CookieOpts is used to configure
-// secure flag, TTL, and domain.
+// secure flag, TTL, domain, path, and SameSite policy.
 func NewServerCookie(name string, data []byte, opts ...CookieOpts) *http.Cookie {
 	value := base64.StdEncoding.EncodeToString(data)
 
@@ -119,6 +149,12 @@ func NewServerCookie(name string, data []byte, opts ...CookieOpts) *http.Cookie 
 		cookie.Secure = opts[0].secure
 		cookie.MaxAge = int(opts[0].ttl.Seconds())
 		cookie.Domain = opts[0].domain
+		if opts[0].path != "" {
+			cookie.Path = opts[0].path
+		}
+		if opts[0].sameSite != 0 {
+			cookie.SameSite = opts[0].sameSite
+		}
 	}
 
 	return cookie
@@ -126,6 +162,7 @@ func NewServerCookie(name string, data []byte, opts ...CookieOpts) *http.Cookie 
 
 // ClearCookie creates a cookie that clears/deletes an existing cookie.
 // It sets MaxAge to -1 which instructs the browser to delete the cookie.
+// Pass the same opts used when setting the cookie so that path and domain match.
 func ClearCookie(name string, opts ...CookieOpts) *http.Cookie {
 	cookie := &http.Cookie{
 		Name:     FullCookieName(name),
@@ -139,6 +176,13 @@ func ClearCookie(name string, opts ...CookieOpts) *http.Cookie {
 
 	if len(opts) > 0 {
 		cookie.Secure = opts[0].secure
+		cookie.Domain = opts[0].domain
+		if opts[0].path != "" {
+			cookie.Path = opts[0].path
+		}
+		if opts[0].sameSite != 0 {
+			cookie.SameSite = opts[0].sameSite
+		}
 	}
 
 	return cookie
