@@ -28,6 +28,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"slices"
@@ -64,6 +65,16 @@ var (
 	errorLogger   = log.New(os.Stdout, ErrorSymbol+" [ERROR] ", log.LstdFlags)
 	successLogger = log.New(os.Stdout, SuccessSymbol+" [SUCCESS] ", log.LstdFlags)
 )
+
+// SetOutput redirects all loggers to w. Pass io.Discard to silence output (e.g. in tests).
+func SetOutput(w io.Writer) {
+	generalLogger.SetOutput(w)
+	infoLogger.SetOutput(w)
+	debugLogger.SetOutput(w)
+	warnLogger.SetOutput(w)
+	errorLogger.SetOutput(w)
+	successLogger.SetOutput(w)
+}
 
 // SetLogLevel configures the minimum log level for all loggers.
 // Valid values: "debug", "info", "warn", "error"
