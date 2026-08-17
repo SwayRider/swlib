@@ -68,7 +68,8 @@ func GetRefreshToken(ctx context.Context) (r string, ok bool) {
 	return
 }
 
-// GetOrigIp retrieves the original client IP address (from X-Forwarded-For).
+// GetOrigIp retrieves the original client IP address (from the
+// gateway-forwarded x-orig-ip metadata; see grpc/interceptors).
 func GetOrigIp(ctx context.Context) (ip string, ok bool) {
 	iface := ctx.Value(OrigIpKey)
 	ip, ok = iface.(string)
