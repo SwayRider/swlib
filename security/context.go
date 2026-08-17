@@ -100,9 +100,19 @@ func GetSecure(ctx context.Context) (s bool, ok bool) {
 // ResolveUserID returns the authenticated user ID for the request.
 //
 // When the caller is the API gateway (service token), the gateway forwards
-// the original user identity as x-user-id gRPC metadata. When the caller
-// presents a user JWT directly (dev/ops access), the subject claim is used.
-// Returns an empty string if neither is available.
+// the original user identity as x-user-id gRPC metadata and this returns it
+// verbatim. When the caller presents a user JWT directly (dev/ops access),
+// the subject claim is used. Returns an empty string if neither is available.
+//
+// Trust model: the x-user-* metadata is NOT authentication. It is only
+// meaningful because the caller was already authenticated as a service
+// client holding a token with the scopes required by the endpoint (enforced
+// by AuthInterceptor before claims are placed in context). Any holder of
+// such a token — the API gateway is the only one in practice — can set
+// these headers to arbitrary values, including another user's ID. Treat the
+// result as a gateway-forwarded hint about the original caller, never as
+// verified user identity, and never use it alone to authorize privileged
+// operations.
 func ResolveUserID(ctx context.Context) string {
 	claims, ok := GetClaims(ctx)
 	if !ok || claims == nil {
@@ -123,9 +133,16 @@ func ResolveUserID(ctx context.Context) string {
 // ResolveAccountLevel returns the account level for the request.
 //
 // When the caller is the API gateway (service token), the gateway forwards
-// the original user's account level as x-account-level gRPC metadata.
-// When the caller presents a user JWT directly, the account level is read
-// from the user claims. Returns "standard" if neither is available.
+// the original user's account level as x-account-level gRPC metadata and
+// this returns it verbatim. When the caller presents a user JWT directly,
+// the account level is read from the user claims. Returns "standard" if
+// neither is available.
+//
+// Same trust model as ResolveUserID: the metadata is only consulted when
+// the caller holds verified service claims with the endpoint's required
+// scopes, and any such token holder can set it arbitrarily. It is a
+// gateway-forwarded hint, never verified identity — do not use it alone to
+// authorize privileged operations.
 func ResolveAccountLevel(ctx context.Context) string {
 	claims, ok := GetClaims(ctx)
 	if !ok || claims == nil {
@@ -134,9 +151,13 @@ func ResolveAccountLevel(ctx context.Context) string {
 	if userClaims, ok := claims.SwayRiderClaims.(*jwt.SwayRiderUserClaims); ok {
 		return userClaims.AccountLevel
 	}
-	md, _ := metadata.FromIncomingContext(ctx)
-	if vals := md.Get("x-account-level"); len(vals) > 0 {
-		return vals[0]
+	if _, isService := claims.SwayRiderClaims.(*jwt.SwayRiderServiceClaims); isService {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if ok {
+			if vals := md.Get("x-account-level"); len(vals) > 0 {
+				return vals[0]
+			}
+		}
 	}
 	return "standard"
 }
