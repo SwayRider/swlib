@@ -42,6 +42,26 @@ func TestCalculatePasswordHash(t *testing.T) {
 	}
 }
 
+func TestCalculatePasswordHash_UsesCurrentCostParameters(t *testing.T) {
+	hash, err := CalculatePasswordHash("mySecurePassword123!")
+	if err != nil {
+		t.Fatalf("CalculatePasswordHash failed: %v", err)
+	}
+
+	parts := strings.Split(hash, "$")
+	if len(parts) != 6 {
+		t.Fatalf("expected 6 parts in hash, got %d", len(parts))
+	}
+
+	// Pins the OWASP-recommended cost profile (m=64MiB, t=3, p=4) so a future
+	// accidental regression back to a weaker cost fails a test rather than
+	// silently shipping.
+	wantParams := "m=65536,t=3,p=4"
+	if parts[3] != wantParams {
+		t.Errorf("cost params = %q, want %q", parts[3], wantParams)
+	}
+}
+
 func TestCalculatePasswordHash_UniqueHashes(t *testing.T) {
 	password := "samePassword"
 

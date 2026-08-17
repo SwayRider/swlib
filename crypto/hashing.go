@@ -37,15 +37,15 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Argon2id parameters for password hashing.
-// These settings provide a good balance between security and performance:
+// Argon2id parameters for password hashing, matching OWASP's recommended
+// profile of m=64MiB, t=3, p=4:
 // - 64MB memory usage
-// - 1 iteration
+// - 3 iterations
 // - 4 parallel threads
 // - 32-byte hash output
 const (
 	argonMemory  = 64 * 1024
-	argonTime    = 1
+	argonTime    = 3
 	argonThreads = 4
 	argonHashLen = 32
 )
