@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"github.com/swayrider/swlib/grpc/interceptors"
 	log "github.com/swayrider/swlib/logger"
+	"github.com/swayrider/swlib/ratelimit"
 	"github.com/swayrider/swlib/security"
 )
 
@@ -29,6 +30,9 @@ const (
 	AuthInterceptor GrpcInterceptor = 0x0001
 	// ClientInfoInterceptor extracts client information (IP, user agent) from requests
 	ClientInfoInterceptor GrpcInterceptor = 0x0002
+	// RateLimitInterceptor applies a coarse per-peer-IP rate limit ahead of
+	// authentication. Requires RateLimiter to be set on GrpcConfig.
+	RateLimitInterceptor GrpcInterceptor = 0x0004
 )
 
 // ServiceRegistrar is a function type for registering gRPC services with the server.
@@ -63,6 +67,8 @@ type GrpcConfig struct {
 	ForwardResponseFn ForwardResponseFn
 	// HeaderMatcherFn is an optional callback for customizing header mapping
 	HeaderMatcherFn HeaderMathcerFn
+	// RateLimiter backs RateLimitInterceptor when that bit is set in Interceptors.
+	RateLimiter *ratelimit.Limiter
 }
 
 // NewGrpcConfig creates a new GrpcConfig with the specified interceptors,
@@ -96,6 +102,10 @@ func (cfg *GrpcConfig) SetForwardResponseFn(fn ForwardResponseFn) {
 
 func (cfg *GrpcConfig) SetHeaderMatcherFn(fn HeaderMathcerFn) {
 	cfg.HeaderMatcherFn = fn
+}
+
+func (cfg *GrpcConfig) SetRateLimiter(l *ratelimit.Limiter) {
+	cfg.RateLimiter = l
 }
 
 func (a *app) startGrpc() {
@@ -206,6 +216,13 @@ func (a *app) stopGrpcServer() {
 func (a *app) grpcInterceptors(lg *log.Logger) []grpc.UnaryServerInterceptor {
 	var lst []grpc.UnaryServerInterceptor
 
+	// RateLimit runs first, ahead of auth/client-info parsing, so an
+	// over-limit caller is rejected before the server does any further work
+	// on the request.
+	if (a.grpcConfig.Interceptors & RateLimitInterceptor) == RateLimitInterceptor {
+		lst = append(lst, interceptors.RateLimitInterceptor(
+			a.grpcConfig.RateLimiter, lg))
+	}
 	if (a.grpcConfig.Interceptors & AuthInterceptor) == AuthInterceptor {
 		lst = append(lst, interceptors.AuthInterceptor(
 			a.grpcConfig.JWTPublicKeysFn, lg))

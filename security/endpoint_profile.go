@@ -79,6 +79,13 @@ type EndpointProfile struct {
 	// either token type. Has no effect on evaluation — it exists for clarity
 	// and for callers that need to inspect the profile.
 	AllowUser bool
+
+	// SkipRateLimit exempts this endpoint from a coarse gRPC-level rate
+	// limiter (see interceptors.RateLimitInterceptor). Intended only for
+	// orchestration probes (health/liveness) where throttling could itself
+	// cause an outage (e.g. a crash-loop from failed readiness checks) — do
+	// not use it to carve out credential endpoints.
+	SkipRateLimit bool
 }
 
 // Global registry of endpoint profiles.
@@ -159,6 +166,22 @@ func PublicEndpoint(endpoint string, method ...string) {
 			continue
 		}
 		setEndpointProfile(k, methods[i], EndpointProfile{AllowPublic: true})
+	}
+}
+
+// SkipRateLimitEndpoint exempts an endpoint from the coarse gRPC-level rate
+// limiter. Use only for orchestration probes (health/liveness); throttling
+// those can itself cause an outage.
+func SkipRateLimitEndpoint(endpoint string, method ...string) {
+	keys, methods := endpointKeys(endpoint, method...)
+	for i, k := range keys {
+		p, ok := getEndpointProfile(k)
+		if ok {
+			p.SkipRateLimit = true
+			setEndpointProfile(k, methods[i], p)
+			continue
+		}
+		setEndpointProfile(k, methods[i], EndpointProfile{SkipRateLimit: true})
 	}
 }
 
