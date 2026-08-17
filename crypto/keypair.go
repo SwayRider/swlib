@@ -11,13 +11,13 @@ import (
 // RSA key generation parameters.
 const (
 	// rsaKeySize is the bit size for generated RSA keys
-	rsaKeySize = 2048
+	rsaKeySize = 3072
 	// maxAge is the recommended validity period for keypairs (30 days)
 	maxAge = 30 * 24 * time.Hour
 )
 
 // CreateKeypair generates a new RSA keypair for JWT signing.
-// The keypair uses 2048-bit RSA and returns keys in PEM format.
+// The keypair uses 3072-bit RSA and returns keys in PEM format.
 //
 // Returns:
 //   - privatePEM: The private key in PEM format (for signing tokens)

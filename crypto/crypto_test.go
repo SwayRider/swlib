@@ -145,6 +145,19 @@ func TestVerifyPassword_InvalidHashFormat(t *testing.T) {
 	}
 }
 
+func TestVerifyPassword_MalformedInput(t *testing.T) {
+	// Inputs with no '$' at all previously panicked (index out of range on
+	// parts[1]) instead of returning an error.
+	malformed := []string{"", "notahash"}
+
+	for _, hash := range malformed {
+		_, err := VerifyPassword(hash, "password")
+		if err == nil {
+			t.Errorf("expected error for malformed hash %q, got nil", hash)
+		}
+	}
+}
+
 func TestVerifyPassword_InvalidVersion(t *testing.T) {
 	// Hash with invalid version format
 	invalidHash := "$argon2id$v=invalid$m=65536,t=1,p=4$salt$hash"
@@ -333,9 +346,9 @@ func TestCreateKeypair_PrivateKeyParseable(t *testing.T) {
 		t.Fatalf("failed to parse private key: %v", err)
 	}
 
-	// Verify key size (should be 2048 bits)
-	if privateKey.N.BitLen() != 2048 {
-		t.Errorf("expected 2048-bit key, got %d bits", privateKey.N.BitLen())
+	// Verify key size (should be 3072 bits)
+	if privateKey.N.BitLen() != 3072 {
+		t.Errorf("expected 3072-bit key, got %d bits", privateKey.N.BitLen())
 	}
 }
 
