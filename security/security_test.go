@@ -947,6 +947,21 @@ func TestResolveUserID_UserJWT(t *testing.T) {
 	}
 }
 
+// A user JWT caller must never resolve to gateway-forwarded metadata, even if
+// the metadata is forged: x-user-* is only trusted for service-token callers.
+func TestResolveUserID_UserJWT_IgnoresSpoofedMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "user-abc"},
+		SwayRiderClaims:  jwt.NewSwayRiderUserClaims(false, "standard"),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("x-user-id", "user-from-gateway"))
+
+	if got := ResolveUserID(ctx); got != "user-abc" {
+		t.Errorf("expected the JWT subject 'user-abc', got forged metadata %q", got)
+	}
+}
+
 func TestResolveUserID_ServiceToken_WithMetadata(t *testing.T) {
 	claims := &jwt.Claims{
 		RegisteredClaims: jwt5.RegisteredClaims{Subject: "swayrider-api"},
@@ -987,6 +1002,21 @@ func TestResolveAccountLevel_UserJWT(t *testing.T) {
 
 	if got := ResolveAccountLevel(ctx); got != "premium" {
 		t.Errorf("expected 'premium', got %q", got)
+	}
+}
+
+// A user JWT caller must never resolve to gateway-forwarded metadata, even if
+// the metadata is forged: x-user-* is only trusted for service-token callers.
+func TestResolveAccountLevel_UserJWT_IgnoresSpoofedMetadata(t *testing.T) {
+	claims := &jwt.Claims{
+		RegisteredClaims: jwt5.RegisteredClaims{Subject: "user-abc"},
+		SwayRiderClaims:  jwt.NewSwayRiderUserClaims(false, "premium"),
+	}
+	ctx := context.WithValue(context.Background(), ClaimsKey, claims)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("x-account-level", "enterprise"))
+
+	if got := ResolveAccountLevel(ctx); got != "premium" {
+		t.Errorf("expected the JWT account level 'premium', got forged metadata %q", got)
 	}
 }
 
