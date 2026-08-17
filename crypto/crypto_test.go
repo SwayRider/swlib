@@ -145,6 +145,19 @@ func TestVerifyPassword_InvalidHashFormat(t *testing.T) {
 	}
 }
 
+func TestVerifyPassword_MalformedInput(t *testing.T) {
+	// Inputs with no '$' at all previously panicked (index out of range on
+	// parts[1]) instead of returning an error.
+	malformed := []string{"", "notahash"}
+
+	for _, hash := range malformed {
+		_, err := VerifyPassword(hash, "password")
+		if err == nil {
+			t.Errorf("expected error for malformed hash %q, got nil", hash)
+		}
+	}
+}
+
 func TestVerifyPassword_InvalidVersion(t *testing.T) {
 	// Hash with invalid version format
 	invalidHash := "$argon2id$v=invalid$m=65536,t=1,p=4$salt$hash"

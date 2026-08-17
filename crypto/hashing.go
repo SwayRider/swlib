@@ -87,6 +87,9 @@ func CalculatePasswordHash(password string) (string, error) {
 //   - error: an error if the hash could not be verified
 func VerifyPassword(encodedHash, password string) (bool, error) {
 	parts := strings.Split(encodedHash, "$")
+	if len(parts) < 2 {
+		return false, fmt.Errorf("invalid hash format")
+	}
 
 	switch parts[1] {
 	case "argon2id":
