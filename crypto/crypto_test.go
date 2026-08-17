@@ -346,9 +346,9 @@ func TestCreateKeypair_PrivateKeyParseable(t *testing.T) {
 		t.Fatalf("failed to parse private key: %v", err)
 	}
 
-	// Verify key size (should be 2048 bits)
-	if privateKey.N.BitLen() != 2048 {
-		t.Errorf("expected 2048-bit key, got %d bits", privateKey.N.BitLen())
+	// Verify key size (should be 3072 bits)
+	if privateKey.N.BitLen() != 3072 {
+		t.Errorf("expected 3072-bit key, got %d bits", privateKey.N.BitLen())
 	}
 }
 

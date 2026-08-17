@@ -22,7 +22,7 @@
 //
 // # RSA Keypairs
 //
-// Creates 2048-bit RSA keypairs for JWT signing:
+// Creates 3072-bit RSA keypairs for JWT signing:
 //
 //	privateKey, publicKey, expiresAt, err := crypto.CreateKeypair()
 package crypto
