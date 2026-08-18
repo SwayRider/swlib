@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"github.com/swayrider/swlib/grpc/interceptors"
+	"github.com/swayrider/swlib/http/middlewares"
 	log "github.com/swayrider/swlib/logger"
 	"github.com/swayrider/swlib/ratelimit"
 	"github.com/swayrider/swlib/security"
@@ -68,7 +69,12 @@ type GrpcConfig struct {
 	// HeaderMatcherFn is an optional callback for customizing header mapping
 	HeaderMatcherFn HeaderMathcerFn
 	// RateLimiter backs RateLimitInterceptor when that bit is set in Interceptors.
+	// The same limiter and bit also gate the HTTP gateway's rate-limit
+	// middleware, so one opt-in covers both the raw gRPC port and REST.
 	RateLimiter *ratelimit.Limiter
+	// MaxRecvMsgSizeBytes caps incoming gRPC message size when > 0. Leave
+	// unset (0) to keep gRPC's implicit ~4MB default.
+	MaxRecvMsgSizeBytes int
 }
 
 // NewGrpcConfig creates a new GrpcConfig with the specified interceptors,
@@ -108,6 +114,10 @@ func (cfg *GrpcConfig) SetRateLimiter(l *ratelimit.Limiter) {
 	cfg.RateLimiter = l
 }
 
+func (cfg *GrpcConfig) SetMaxRecvMsgSize(n int) {
+	cfg.MaxRecvMsgSizeBytes = n
+}
+
 func (a *app) startGrpc() {
 	lg := a.lg.Derive(log.WithFunction("startGrpc"))
 	if a.grpcConfig == nil {
@@ -119,13 +129,16 @@ func (a *app) startGrpc() {
 
 	// Hook up grpc
 	interceptorList := a.grpcInterceptors(lg)
+	var serverOpts []grpc.ServerOption
 	if len(interceptorList) == 1 {
-		a.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(interceptorList[0]))
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(interceptorList[0]))
 	} else if len(interceptorList) > 0 {
-		a.grpcServer = grpc.NewServer(grpc.ChainUnaryInterceptor(interceptorList...))
-	} else {
-		a.grpcServer = grpc.NewServer()
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(interceptorList...))
 	}
+	if a.grpcConfig.MaxRecvMsgSizeBytes > 0 {
+		serverOpts = append(serverOpts, grpc.MaxRecvMsgSize(a.grpcConfig.MaxRecvMsgSizeBytes))
+	}
+	a.grpcServer = grpc.NewServer(serverOpts...)
 
 	for _, r := range a.grpcConfig.ServiceRegistrars {
 		r.ServiceRegistrar(a.grpcServer, a)
@@ -168,7 +181,7 @@ func (a *app) startGrpc() {
 			gwOpts)
 	}
 
-	handler := cors.New(cors.Options{
+	var handler http.Handler = cors.New(cors.Options{
 		AllowedHeaders: []string{"*"},
 		AllowedMethods: []string{"OPTIONS", "GET", "POST"},
 		AllowedOrigins: []string{
@@ -179,6 +192,10 @@ func (a *app) startGrpc() {
 		},
 		AllowCredentials: true,
 	}).Handler(mux)
+
+	if (a.grpcConfig.Interceptors&RateLimitInterceptor) == RateLimitInterceptor && a.grpcConfig.RateLimiter != nil {
+		handler = middlewares.RateLimit(handler, a.grpcConfig.RateLimiter, lg)
+	}
 
 	a.httpGateway = &http.Server{
 		Addr:    fmt.Sprintf(":%d", httpPort),
