@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -75,6 +77,11 @@ type GrpcConfig struct {
 	// MaxRecvMsgSizeBytes caps incoming gRPC message size when > 0. Leave
 	// unset (0) to keep gRPC's implicit ~4MB default.
 	MaxRecvMsgSizeBytes int
+	// AllowCredentials controls whether the HTTP gateway's CORS policy allows
+	// credentialed cross-origin requests (cookies, or fetch credentials:
+	// "include"). Defaults to false — only services that actually set
+	// cookies (e.g. authservice's refresh-token cookie) should opt in.
+	AllowCredentials bool
 }
 
 // NewGrpcConfig creates a new GrpcConfig with the specified interceptors,
@@ -116,6 +123,22 @@ func (cfg *GrpcConfig) SetRateLimiter(l *ratelimit.Limiter) {
 
 func (cfg *GrpcConfig) SetMaxRecvMsgSize(n int) {
 	cfg.MaxRecvMsgSizeBytes = n
+}
+
+func (cfg *GrpcConfig) SetAllowCredentials(v bool) {
+	cfg.AllowCredentials = v
+}
+
+// validateCORSOrigins rejects a bare "*" origin paired with
+// AllowCredentials: true. rs/cors would turn that combination into "reflect
+// every origin with credentials", silently opening credentialed cross-origin
+// access to any site. Scoped wildcard patterns like "https://*.example.com"
+// are unaffected — this only guards against a bare "*" entry.
+func validateCORSOrigins(origins []string) error {
+	if slices.Contains(origins, "*") {
+		return errors.New("CORS misconfiguration: AllowCredentials is enabled but origins contain \"*\"")
+	}
+	return nil
 }
 
 func (a *app) startGrpc() {
@@ -181,16 +204,23 @@ func (a *app) startGrpc() {
 			gwOpts)
 	}
 
+	corsOrigins := []string{
+		"http://localhost:5173",
+		"http://*.hevanto-it.com",
+		"https://*.hevanto-it.com",
+		"https://*.swayrider.com",
+	}
+	if a.grpcConfig.AllowCredentials {
+		if err := validateCORSOrigins(corsOrigins); err != nil {
+			lg.Fatalf("%v", err)
+		}
+	}
+
 	var handler http.Handler = cors.New(cors.Options{
-		AllowedHeaders: []string{"*"},
-		AllowedMethods: []string{"OPTIONS", "GET", "POST"},
-		AllowedOrigins: []string{
-			"http://localhost:5173",
-			"http://*.hevanto-it.com",
-			"https://*.hevanto-it.com",
-			"https://*.swayrider.com",
-		},
-		AllowCredentials: true,
+		AllowedHeaders:   []string{"*"},
+		AllowedMethods:   []string{"OPTIONS", "GET", "POST"},
+		AllowedOrigins:   corsOrigins,
+		AllowCredentials: a.grpcConfig.AllowCredentials,
 	}).Handler(mux)
 
 	if (a.grpcConfig.Interceptors&RateLimitInterceptor) == RateLimitInterceptor && a.grpcConfig.RateLimiter != nil {
