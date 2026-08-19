@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -13,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"
 	"github.com/swayrider/swlib/grpc/interceptors"
+	"github.com/swayrider/swlib/http/middlewares"
 	log "github.com/swayrider/swlib/logger"
 	"github.com/swayrider/swlib/ratelimit"
 	"github.com/swayrider/swlib/security"
@@ -68,7 +71,17 @@ type GrpcConfig struct {
 	// HeaderMatcherFn is an optional callback for customizing header mapping
 	HeaderMatcherFn HeaderMathcerFn
 	// RateLimiter backs RateLimitInterceptor when that bit is set in Interceptors.
+	// The same limiter and bit also gate the HTTP gateway's rate-limit
+	// middleware, so one opt-in covers both the raw gRPC port and REST.
 	RateLimiter *ratelimit.Limiter
+	// MaxRecvMsgSizeBytes caps incoming gRPC message size when > 0. Leave
+	// unset (0) to keep gRPC's implicit ~4MB default.
+	MaxRecvMsgSizeBytes int
+	// AllowCredentials controls whether the HTTP gateway's CORS policy allows
+	// credentialed cross-origin requests (cookies, or fetch credentials:
+	// "include"). Defaults to false — only services that actually set
+	// cookies (e.g. authservice's refresh-token cookie) should opt in.
+	AllowCredentials bool
 }
 
 // NewGrpcConfig creates a new GrpcConfig with the specified interceptors,
@@ -108,6 +121,26 @@ func (cfg *GrpcConfig) SetRateLimiter(l *ratelimit.Limiter) {
 	cfg.RateLimiter = l
 }
 
+func (cfg *GrpcConfig) SetMaxRecvMsgSize(n int) {
+	cfg.MaxRecvMsgSizeBytes = n
+}
+
+func (cfg *GrpcConfig) SetAllowCredentials(v bool) {
+	cfg.AllowCredentials = v
+}
+
+// validateCORSOrigins rejects a bare "*" origin paired with
+// AllowCredentials: true. rs/cors would turn that combination into "reflect
+// every origin with credentials", silently opening credentialed cross-origin
+// access to any site. Scoped wildcard patterns like "https://*.example.com"
+// are unaffected — this only guards against a bare "*" entry.
+func validateCORSOrigins(origins []string) error {
+	if slices.Contains(origins, "*") {
+		return errors.New("CORS misconfiguration: AllowCredentials is enabled but origins contain \"*\"")
+	}
+	return nil
+}
+
 func (a *app) startGrpc() {
 	lg := a.lg.Derive(log.WithFunction("startGrpc"))
 	if a.grpcConfig == nil {
@@ -119,13 +152,16 @@ func (a *app) startGrpc() {
 
 	// Hook up grpc
 	interceptorList := a.grpcInterceptors(lg)
+	var serverOpts []grpc.ServerOption
 	if len(interceptorList) == 1 {
-		a.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(interceptorList[0]))
+		serverOpts = append(serverOpts, grpc.UnaryInterceptor(interceptorList[0]))
 	} else if len(interceptorList) > 0 {
-		a.grpcServer = grpc.NewServer(grpc.ChainUnaryInterceptor(interceptorList...))
-	} else {
-		a.grpcServer = grpc.NewServer()
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(interceptorList...))
 	}
+	if a.grpcConfig.MaxRecvMsgSizeBytes > 0 {
+		serverOpts = append(serverOpts, grpc.MaxRecvMsgSize(a.grpcConfig.MaxRecvMsgSizeBytes))
+	}
+	a.grpcServer = grpc.NewServer(serverOpts...)
 
 	for _, r := range a.grpcConfig.ServiceRegistrars {
 		r.ServiceRegistrar(a.grpcServer, a)
@@ -168,17 +204,28 @@ func (a *app) startGrpc() {
 			gwOpts)
 	}
 
-	handler := cors.New(cors.Options{
-		AllowedHeaders: []string{"*"},
-		AllowedMethods: []string{"OPTIONS", "GET", "POST"},
-		AllowedOrigins: []string{
-			"http://localhost:5173",
-			"http://*.hevanto-it.com",
-			"https://*.hevanto-it.com",
-			"https://*.swayrider.com",
-		},
-		AllowCredentials: true,
+	corsOrigins := []string{
+		"http://localhost:5173",
+		"http://*.hevanto-it.com",
+		"https://*.hevanto-it.com",
+		"https://*.swayrider.com",
+	}
+	if a.grpcConfig.AllowCredentials {
+		if err := validateCORSOrigins(corsOrigins); err != nil {
+			lg.Fatalf("%v", err)
+		}
+	}
+
+	var handler http.Handler = cors.New(cors.Options{
+		AllowedHeaders:   []string{"*"},
+		AllowedMethods:   []string{"OPTIONS", "GET", "POST"},
+		AllowedOrigins:   corsOrigins,
+		AllowCredentials: a.grpcConfig.AllowCredentials,
 	}).Handler(mux)
+
+	if (a.grpcConfig.Interceptors&RateLimitInterceptor) == RateLimitInterceptor && a.grpcConfig.RateLimiter != nil {
+		handler = middlewares.RateLimit(handler, a.grpcConfig.RateLimiter, lg)
+	}
 
 	a.httpGateway = &http.Server{
 		Addr:    fmt.Sprintf(":%d", httpPort),
