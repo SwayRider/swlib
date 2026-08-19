@@ -16,8 +16,10 @@ SwLib is a comprehensive Go library providing reusable components for building m
   - [grpc - gRPC Utilities](#grpc---grpc-utilities)
   - [http - HTTP Middleware](#http---http-middleware)
   - [jwt - JWT Token Management](#jwt---jwt-token-management)
+  - [jwtkeys - JWT Public Key Cache](#jwtkeys---jwt-public-key-cache)
   - [logger - Structured Logging](#logger---structured-logging)
   - [math - Mathematical Utilities](#math---mathematical-utilities)
+  - [ratelimit - Request Rate Limiting](#ratelimit---request-rate-limiting)
   - [security - Authorization Framework](#security---authorization-framework)
   - [str - String Utilities](#str---string-utilities)
 - [Architecture Overview](#architecture-overview)
@@ -26,29 +28,35 @@ SwLib is a comprehensive Go library providing reusable components for building m
 ## Installation
 
 ```bash
-go get github.com/swayrider/swayrider/backend/swlib
+go get github.com/swayrider/swlib
 ```
 
 ## Quick Start
 
-Here's a minimal example of creating a microservice using swlib:
+Here's a minimal example of an HTTP-only microservice using swlib (see [HTTP-only Services](#http-only-services) below; for a gRPC service see [gRPC and HTTP Gateway](#grpc-and-http-gateway)):
 
 ```go
 package main
 
 import (
-    "github.com/swayrider/swayrider/backend/swlib/app"
+    "github.com/swayrider/swlib/app"
 )
 
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
-        WithGrpc(grpcSetup).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
+        WithHTTP(startHTTPServer, stopHTTPServer).
         Run()
+    _ = application
 }
 
-func grpcSetup(a *app.App, grpcServer *grpc.Server, mux *runtime.ServeMux) {
-    // Register your gRPC service handlers here
+func startHTTPServer(a app.App) error {
+    // Start your HTTP server here
+    return nil
+}
+
+func stopHTTPServer(a app.App) {
+    // Gracefully stop your HTTP server here
 }
 ```
 
@@ -58,7 +66,7 @@ func grpcSetup(a *app.App, grpcServer *grpc.Server, mux *runtime.ServeMux) {
 
 ### app - Service Bootstrap Framework
 
-The `app` package is the core of swlib, providing a fluent builder pattern for configuring and running microservices. It handles service lifecycle, configuration, database connections, gRPC/HTTP servers, and graceful shutdown.
+The `app` package is the core of swlib, providing a fluent builder pattern for configuring and running microservices. `app.New(...)` returns an `App` interface value; it handles service lifecycle, configuration, database connections, gRPC/HTTP servers, and graceful shutdown.
 
 #### Basic Usage
 
@@ -66,13 +74,14 @@ The `app` package is the core of swlib, providing a fluent builder pattern for c
 package main
 
 import (
-    "github.com/swayrider/swayrider/backend/swlib/app"
+    "github.com/swayrider/swlib/app"
 )
 
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields | app.DatabaseConnectionFields).
+        WithDefaultConfigFields(app.BackendServiceFields|app.DatabaseConnectionFields, app.FlagGroupOverrides{}).
         Run()
+    _ = application
 }
 ```
 
@@ -84,36 +93,30 @@ The app package provides pre-defined configuration field groups that can be comb
 |-------------|-------------|----------------------|
 | `BackendServiceFields` | Basic service configuration | `LOG_LEVEL`, `HTTP_PORT`, `GRPC_PORT` |
 | `DatabaseConnectionFields` | PostgreSQL connection | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` |
-| `MinioConnectionFields` | MinIO object storage | `MINIO_HOST`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_SECURE` |
-| `WebServiceFields` | Web server configuration | `WEB_PORT`, `WEB_ROOT` |
+| `WebServiceFields` | Web server configuration | `WEB_PORT`, `WEB_PATH_PREFIX` |
 | `ClientCredentialsFields` | OAuth client credentials | `CLIENT_ID`, `CLIENT_SECRET` |
 | `HTMXServiceFields` | HTMX-specific configuration | Various HTMX settings |
+
+`WithDefaultConfigFields` takes a second `FlagGroupOverrides` argument used to override individual field defaults/env names per group; pass `app.FlagGroupOverrides{}` when no overrides are needed.
 
 #### Custom Configuration Fields
 
 ```go
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
         WithConfigFields(
-            app.ConfigField{
-                Name:        "api-key",
-                Description: "External API key",
-                EnvName:     "API_KEY",
-                Required:    true,
-            },
-            app.ConfigField{
-                Name:        "cache-ttl",
-                Description: "Cache time-to-live in seconds",
-                EnvName:     "CACHE_TTL",
-                Default:     "300",
-            },
+            app.NewStringConfigField(
+                "api-key", "API_KEY", "External API key", ""),
+            app.NewIntConfigField(
+                "cache-ttl", "CACHE_TTL", "Cache time-to-live in seconds", 300),
         ).
         Run()
 
     // Access configuration values
-    apiKey := application.GetConfig("api-key")
-    cacheTTL := application.GetConfigAsInt("cache-ttl")
+    apiKey := app.GetConfigField[string](application.Config(), "api-key")
+    cacheTTL := app.GetConfigField[int](application.Config(), "cache-ttl")
+    _, _ = apiKey, cacheTTL
 }
 ```
 
@@ -123,26 +126,37 @@ func main() {
 import (
     "database/sql"
     _ "github.com/lib/pq"
+
+    "github.com/swayrider/swlib/app"
 )
+
+// pgDB is a minimal app.DB implementation wrapping *sql.DB.
+type pgDB struct{ conn *sql.DB }
+
+func (d *pgDB) SqlDB() *sql.DB { return d.conn }
 
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields | app.DatabaseConnectionFields).
+        WithDefaultConfigFields(app.BackendServiceFields|app.DatabaseConnectionFields, app.FlagGroupOverrides{}).
         WithDatabase(
             // Database constructor
-            func(a *app.App) (*sql.DB, error) {
+            func(a app.App) app.DB {
                 connStr := fmt.Sprintf(
-                    "host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-                    a.GetConfig("db-host"),
-                    a.GetConfig("db-port"),
-                    a.GetConfig("db-user"),
-                    a.GetConfig("db-password"),
-                    a.GetConfig("db-name"),
+                    "host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+                    app.GetConfigField[string](a.Config(), app.KeyDBHost),
+                    app.GetConfigField[int](a.Config(), app.KeyDBPort),
+                    app.GetConfigField[string](a.Config(), app.KeyDBUser),
+                    app.GetConfigField[string](a.Config(), app.KeyDBPassword),
+                    app.GetConfigField[string](a.Config(), app.KeyDBName),
                 )
-                return sql.Open("postgres", connStr)
+                conn, err := sql.Open("postgres", connStr)
+                if err != nil {
+                    a.Logger().Fatal(err.Error())
+                }
+                return &pgDB{conn: conn}
             },
             // Bootstrap function (optional migrations, etc.)
-            func(a *app.App, db *sql.DB) error {
+            func(a app.App) error {
                 // Run migrations or initial setup
                 return nil
             },
@@ -150,37 +164,8 @@ func main() {
         Run()
 
     // Access database
-    db := app.GetDatabase[*sql.DB](application)
-}
-```
-
-#### Object Store (MinIO) Integration
-
-```go
-import "github.com/minio/minio-go/v7"
-
-func main() {
-    application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields | app.MinioConnectionFields).
-        WithObjectStore(
-            func(a *app.App) (*minio.Client, error) {
-                return minio.New(
-                    fmt.Sprintf("%s:%s", a.GetConfig("minio-host"), a.GetConfig("minio-port")),
-                    &minio.Options{
-                        Creds:  credentials.NewStaticV4(a.GetConfig("minio-access-key"), a.GetConfig("minio-secret-key"), ""),
-                        Secure: a.GetConfigAsBool("minio-secure"),
-                    },
-                )
-            },
-            func(a *app.App, client *minio.Client) error {
-                // Initialize buckets, etc.
-                return nil
-            },
-        ).
-        Run()
-
-    // Access object store
-    minioClient := app.GetObjectStore[*minio.Client](application)
+    sqlDB := application.Database().SqlDB()
+    _ = sqlDB
 }
 ```
 
@@ -188,23 +173,64 @@ func main() {
 
 ```go
 import (
+    "context"
+
     "google.golang.org/grpc"
     "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+    "github.com/swayrider/swlib/app"
 )
 
 func main() {
+    grpcConfig := app.NewGrpcConfig(
+        app.AuthInterceptor|app.ClientInfoInterceptor,
+        nil, // JWT public-keys fn — see the jwtkeys package if the service validates tokens
+        app.GrpcServiceHooks{
+            ServiceRegistrar:   registerMyService,
+            ServiceHTTPHandler: myServiceGateway(nil), // pass the application instance here
+        },
+    )
+
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
-        WithGrpc(setupGrpc).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
+        WithGrpc(grpcConfig).
         Run()
+    _ = application
 }
 
-func setupGrpc(a *app.App, grpcServer *grpc.Server, mux *runtime.ServeMux) {
-    // Register gRPC service
-    pb.RegisterMyServiceServer(grpcServer, &MyServiceServer{app: a})
+// registerMyService registers the gRPC service implementation with the server.
+func registerMyService(r grpc.ServiceRegistrar, a app.App) {
+    pb.RegisterMyServiceServer(r, &MyServiceServer{app: a})
+}
 
-    // Register HTTP gateway (optional)
-    pb.RegisterMyServiceHandlerServer(context.Background(), mux, &MyServiceServer{app: a})
+// myServiceGateway returns an HTTP handler that proxies REST requests to gRPC.
+func myServiceGateway(a app.App) app.ServiceHTTPHandler {
+    return func(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) error {
+        return pb.RegisterMyServiceHandlerFromEndpoint(ctx, mux, endpoint, opts)
+    }
+}
+```
+
+#### HTTP-only Services
+
+Services that expose a plain HTTP API with no gRPC server at all (e.g. tilesservice) use `WithHTTP` instead of `WithGrpc`:
+
+```go
+func main() {
+    application := app.New("myservice").
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
+        WithHTTP(startHTTPServer, stopHTTPServer).
+        Run()
+    _ = application
+}
+
+func startHTTPServer(a app.App) error {
+    // Start and own the http.Server; return once it's listening
+    return nil
+}
+
+func stopHTTPServer(a app.App) {
+    // Gracefully shut the server down
 }
 ```
 
@@ -213,20 +239,31 @@ func setupGrpc(a *app.App, grpcServer *grpc.Server, mux *runtime.ServeMux) {
 For inter-service communication, use the service client pattern:
 
 ```go
-import "github.com/swayrider/swayrider/backend/grpcclients/authclient"
+import (
+    "github.com/swayrider/grpcclients"
+    "github.com/swayrider/grpcclients/authclient"
+    "github.com/swayrider/swlib/app"
+)
+
+func authServiceClientCtor(a app.App) grpcclients.Client {
+    clnt, err := authclient.New(app.ServiceClientHostAndPort(a, "authservice"))
+    if err != nil {
+        a.Logger().Fatal(err.Error())
+    }
+    return clnt
+}
 
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
         WithServiceClients(
-            app.NewServiceClient("authservice", func(host, port string) (*authclient.Client, error) {
-                return authclient.New(host, port)
-            }),
+            app.NewServiceClient("authservice", authServiceClientCtor),
         ).
         Run()
 
     // Access service client
     authClient := app.GetServiceClient[*authclient.Client](application, "authservice")
+    _ = authClient
 }
 ```
 
@@ -235,24 +272,28 @@ func main() {
 ```go
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
-        WithBackgroundRoutines(
-            func(a *app.App) {
-                ticker := time.NewTicker(5 * time.Minute)
-                defer ticker.Stop()
-
-                for {
-                    select {
-                    case <-a.Done():
-                        return
-                    case <-ticker.C:
-                        // Periodic task
-                        cleanupExpiredSessions(a)
-                    }
-                }
-            },
-        ).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
+        WithBackgroundRoutines(cleanupRoutine).
         Run()
+    _ = application
+}
+
+func cleanupRoutine(a app.App) {
+    ctx := a.BackgroundContext()
+    defer a.BackgroundWaitGroup().Done()
+
+    ticker := time.NewTicker(5 * time.Minute)
+    defer ticker.Stop()
+
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case <-ticker.C:
+            // Periodic task
+            cleanupExpiredSessions(a)
+        }
+    }
 }
 ```
 
@@ -263,14 +304,15 @@ Thread-safe key-value store for sharing data across components:
 ```go
 func main() {
     application := app.New("myservice").
-        WithDefaultConfigFields(app.BackendServiceFields).
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
         Run()
 
     // Store data
-    application.SetData("cache-manager", cacheManager)
+    application.SetAppData("cache-manager", cacheManager)
 
     // Retrieve data
-    cm := app.GetData[*CacheManager](application, "cache-manager")
+    cm := app.GetAppData[*CacheManager](application, "cache-manager")
+    _ = cm
 }
 ```
 
@@ -283,7 +325,7 @@ Simple thread-safe local cache for storing arbitrary values.
 #### Usage
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/cache"
+import "github.com/swayrider/swlib/cache"
 
 // Define cache keys
 const (
@@ -320,7 +362,7 @@ Utilities for working with compressed files.
 #### Extracting ZIP Archives
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/compression"
+import "github.com/swayrider/swlib/compression"
 
 func extractData() error {
     err := compression.UnZip("/path/to/archive.zip", "/path/to/destination")
@@ -342,7 +384,7 @@ Secure password hashing, random string generation, and RSA keypair management.
 Uses Argon2id, the winner of the Password Hashing Competition:
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/crypto"
+import "github.com/swayrider/swlib/crypto"
 
 func registerUser(password string) (string, error) {
     // Hash password for storage
@@ -362,7 +404,7 @@ func authenticateUser(storedHash, password string) bool {
 #### Secure Random Strings
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/crypto"
+import "github.com/swayrider/swlib/crypto"
 
 func generateToken() (string, error) {
     // Generate a 32-character cryptographically secure random string
@@ -377,7 +419,7 @@ func generateToken() (string, error) {
 #### RSA Keypair Generation
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/crypto"
+import "github.com/swayrider/swlib/crypto"
 
 func rotateKeys() error {
     privateKeyPEM, publicKeyPEM, expiresAt, err := crypto.CreateKeypair()
@@ -403,7 +445,7 @@ Simplified environment variable access with type conversion and fallbacks.
 #### Usage
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/env"
+import "github.com/swayrider/swlib/env"
 
 func loadConfig() {
     // String with fallback
@@ -437,7 +479,7 @@ Custom flag types for parsing array values from command-line arguments.
 ```go
 import (
     "flag"
-    "github.com/swayrider/swayrider/backend/swlib/swflag"
+    "github.com/swayrider/swlib/swflag"
 )
 
 func main() {
@@ -459,7 +501,7 @@ func main() {
 #### With Custom FlagSet
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/swflag"
+import "github.com/swayrider/swlib/swflag"
 
 func parseFlags() {
     fs := flag.NewFlagSet("myapp", flag.ExitOnError)
@@ -481,7 +523,7 @@ func parseFlags() {
 #### Other Array Types
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/swflag"
+import "github.com/swayrider/swlib/swflag"
 
 func main() {
     var ports swflag.IntArr
@@ -506,7 +548,7 @@ Interceptors and helpers for gRPC service communication.
 ```go
 import (
     "google.golang.org/grpc"
-    "github.com/swayrider/swayrider/backend/swlib/grpc/interceptors"
+    "github.com/swayrider/swlib/grpc/interceptors"
 )
 
 func setupGrpcServer() *grpc.Server {
@@ -530,7 +572,7 @@ func setupGrpcServer() *grpc.Server {
 Extracts and propagates client information through the request chain:
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/grpc/interceptors"
+import "github.com/swayrider/swlib/grpc/interceptors"
 
 func setupGrpcServer() *grpc.Server {
     server := grpc.NewServer(
@@ -546,7 +588,7 @@ func setupGrpcServer() *grpc.Server {
 #### Service-to-Service Calls with Auto-Retry
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/grpc/s2s"
+import "github.com/swayrider/swlib/grpc/s2s"
 
 func callOtherService(ctx context.Context, authClient *authclient.Client) (*pb.Response, error) {
     // Automatically retries with fresh token on Unauthenticated error
@@ -572,7 +614,7 @@ HTTP middleware components for authentication, content validation, and request c
 ```go
 import (
     "net/http"
-    "github.com/swayrider/swayrider/backend/swlib/http/middlewares"
+    "github.com/swayrider/swlib/http/middlewares"
 )
 
 func setupRoutes() http.Handler {
@@ -595,7 +637,7 @@ func setupRoutes() http.Handler {
 For web applications that need to redirect to login pages:
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/http/middlewares"
+import "github.com/swayrider/swlib/http/middlewares"
 
 func setupWebRoutes() http.Handler {
     mux := http.NewServeMux()
@@ -615,7 +657,7 @@ func setupWebRoutes() http.Handler {
 #### Content-Type Validation
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/http/middlewares"
+import "github.com/swayrider/swlib/http/middlewares"
 
 func setupRoutes() http.Handler {
     mux := http.NewServeMux()
@@ -633,7 +675,7 @@ func setupRoutes() http.Handler {
 Extracts client IP, user agent, and other request metadata:
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/http/middlewares"
+import "github.com/swayrider/swlib/http/middlewares"
 
 func setupRoutes() http.Handler {
     mux := http.NewServeMux()
@@ -656,7 +698,7 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 Prevents directory traversal attacks when serving static files:
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/http/middlewares"
+import "github.com/swayrider/swlib/http/middlewares"
 
 func setupStaticFiles() http.Handler {
     fs := http.Dir("./static")
@@ -668,7 +710,7 @@ func setupStaticFiles() http.Handler {
 #### Cookie Utilities
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/http/cookies"
+import "github.com/swayrider/swlib/http/cookies"
 
 func setUserCookie(w http.ResponseWriter, userData map[string]string) error {
     // Encode data into cookie
@@ -698,6 +740,29 @@ func getUserCookie(r *http.Request) (map[string]string, error) {
 }
 ```
 
+#### HTTP Gzip Compression
+
+Helpers for gzip-encoding HTTP responses (distinct from the top-level `compression` package, which only extracts ZIP archives):
+
+```go
+import "github.com/swayrider/swlib/http/compression"
+
+func writeResponse(w http.ResponseWriter, r *http.Request, body []byte) error {
+    if !compression.SupportsGzip(r) {
+        _, err := w.Write(body)
+        return err
+    }
+
+    compressed, err := compression.CompressGzip(body, gzip.DefaultCompression)
+    if err != nil {
+        return err
+    }
+    w.Header().Set("Content-Encoding", "gzip")
+    _, err = w.Write(compressed)
+    return err
+}
+```
+
 ---
 
 ### jwt - JWT Token Management
@@ -707,7 +772,7 @@ Comprehensive JWT handling with custom claims for user and service authenticatio
 #### Configuration
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/jwt"
+import "github.com/swayrider/swlib/jwt"
 
 func init() {
     // Configure JWT issuer and audience (typically done once at startup)
@@ -718,7 +783,7 @@ func init() {
 #### Generating Tokens
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/jwt"
+import "github.com/swayrider/swlib/jwt"
 
 func createUserToken(userID string, email string, isAdmin bool) (*jwt.AccessToken, error) {
     // OpenID Connect claims
@@ -753,7 +818,7 @@ func createUserToken(userID string, email string, isAdmin bool) (*jwt.AccessToke
 #### Generating Service Client Tokens
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/jwt"
+import "github.com/swayrider/swlib/jwt"
 
 func createServiceToken(clientID string, scopes []string) (*jwt.AccessToken, error) {
     serviceClaims := &jwt.SwayRiderServiceClaims{
@@ -775,7 +840,7 @@ func createServiceToken(clientID string, scopes []string) (*jwt.AccessToken, err
 #### Verifying Tokens
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/jwt"
+import "github.com/swayrider/swlib/jwt"
 
 func verifyUserToken(tokenString string) (*jwt.Claims, error) {
     claims, err := jwt.VerifyToken(tokenString, publicKeyPEM, jwt.VerifyOptions{
@@ -797,7 +862,7 @@ func verifyUserToken(tokenString string) (*jwt.Claims, error) {
 #### Working with Claims
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/jwt"
+import "github.com/swayrider/swlib/jwt"
 
 // Serialize claims to map
 func claimsToMap(claims *jwt.Claims) map[string]interface{} {
@@ -814,6 +879,48 @@ func mapToClaims(m map[string]interface{}) (*jwt.OpenIDClaims, error) {
 
 ---
 
+### jwtkeys - JWT Public Key Cache
+
+A hardened, configurable cache of the JWT verification public keys published by authservice. It refreshes in the background on a configurable interval, retains the last-known-good keys if a refresh fails, and bounds each fetch with a timeout. This replaces the old `authclient.PublicKeyFetcher` helper (removed — see `grpcclients`' README).
+
+`app` provides ready-made glue (`JWTKeysConfigFields`, `JWTKeysInitializer`, `JWTKeysFetcher`) so most services never call `jwtkeys` directly:
+
+```go
+import (
+    "github.com/swayrider/swlib/app"
+    "github.com/swayrider/swlib/jwtkeys"
+)
+
+func main() {
+    jwtKeyCache := jwtkeys.New(nil) // pass the service's *log.Logger
+
+    grpcConfig := app.NewGrpcConfig(
+        app.AuthInterceptor,
+        jwtKeyCache.GetPublicKeys,
+        // ...service hooks
+    )
+
+    application := app.New("myservice").
+        WithDefaultConfigFields(app.BackendServiceFields, app.FlagGroupOverrides{}).
+        WithServiceClients(app.NewServiceClient("authservice", authServiceClientCtor)).
+        WithConfigFields(app.JWTKeysConfigFields()...).
+        WithInitializers(app.JWTKeysInitializer(jwtKeyCache)).
+        WithBackgroundRoutines(app.JWTKeysFetcher(jwtKeyCache)).
+        WithGrpc(grpcConfig).
+        Run()
+    _ = application
+}
+```
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `JWT_KEYS_REFRESH_INTERVAL_SECS` | `300` | How often the cache refreshes public keys from authservice |
+| `JWT_KEYS_FETCH_TIMEOUT_SECS` | `15` | Timeout for a single public-key fetch |
+
+`jwtKeyCache.Verify(token)` verifies a token directly against the cached keys; `jwtKeyCache.Keys()` returns the current key set.
+
+---
+
 ### logger - Structured Logging
 
 Context-aware logging with component and function tracking.
@@ -821,7 +928,7 @@ Context-aware logging with component and function tracking.
 #### Basic Usage
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/logger"
+import "github.com/swayrider/swlib/logger"
 
 func main() {
     // Package-level logging
@@ -836,7 +943,7 @@ func main() {
 #### Component-Scoped Logging
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/logger"
+import "github.com/swayrider/swlib/logger"
 
 type UserService struct {
     log *logger.Logger
@@ -881,7 +988,7 @@ Geometric calculations and floating-point utilities.
 #### Zoom Level to Radius Conversion
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/math/geo"
+import "github.com/swayrider/swlib/math/geo"
 
 func calculateSearchArea(zoomLevel int) {
     // Get search radius in meters
@@ -904,7 +1011,7 @@ func calculateSearchArea(zoomLevel int) {
 #### Float Comparisons
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/math/floats"
+import "github.com/swayrider/swlib/math/floats"
 
 func compareFloats() {
     a := 0.1 + 0.2
@@ -923,6 +1030,28 @@ func compareFloats() {
 
 ---
 
+### ratelimit - Request Rate Limiting
+
+A per-key token-bucket rate limiter, used to apply per-source-IP request limits at the HTTP gateway (and, as a raw-port fallback, at the gRPC layer via `RateLimitInterceptor`).
+
+```go
+import "github.com/swayrider/swlib/ratelimit"
+
+// requestsPerSecond=50, burst=100, idle entries evicted after 5 minutes
+limiter := ratelimit.New(50, 100, 5*time.Minute)
+
+if !limiter.Allow(sourceIP) {
+    // reject with 429 / ResourceExhausted
+}
+
+// Periodically evict idle per-key entries
+limiter.Evict()
+```
+
+`app` wires this up automatically for services that opt in via `app.RateLimitConfigFields()`, `app.RateLimitInterceptor`, and `app.RateLimitEvictor` (see the `RATE_LIMIT_*` env vars documented in each service's README).
+
+---
+
 ### security - Authorization Framework
 
 Endpoint-based authorization and JWT context extraction.
@@ -930,7 +1059,7 @@ Endpoint-based authorization and JWT context extraction.
 #### Defining Endpoint Profiles
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/security"
+import "github.com/swayrider/swlib/security"
 
 func init() {
     // Public endpoint - no authentication required
@@ -977,7 +1106,7 @@ func init() {
 #### Extracting JWT Data from Context
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/security"
+import "github.com/swayrider/swlib/security"
 
 func protectedHandler(w http.ResponseWriter, r *http.Request) {
     ctx := r.Context()
@@ -1004,7 +1133,7 @@ func protectedHandler(w http.ResponseWriter, r *http.Request) {
 #### Evaluating Endpoint Profiles
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/security"
+import "github.com/swayrider/swlib/security"
 
 func authMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1037,7 +1166,7 @@ func authMiddleware(next http.Handler) http.Handler {
 Simple string manipulation helpers.
 
 ```go
-import "github.com/swayrider/swayrider/backend/swlib/str"
+import "github.com/swayrider/swlib/str"
 
 func processString() {
     // Remove null terminators from byte slice
