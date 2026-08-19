@@ -3,7 +3,7 @@ package middlewares
 import (
 	"mime"
 	"net/http"
-	"strings"
+	"path"
 )
 
 // MimeType is an HTTP middleware that automatically sets the Content-Type header
@@ -18,7 +18,7 @@ import (
 //   - /images/logo.png → Content-Type: image/png
 func MimeType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fileDotExt := r.URL.Path[strings.LastIndex(r.URL.Path, "."):]
+		fileDotExt := path.Ext(r.URL.Path)
 		mimeType := mime.TypeByExtension(fileDotExt)
 
 		if mimeType != "" {
