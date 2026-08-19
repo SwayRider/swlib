@@ -616,7 +616,7 @@ func TestOpenIDClaims_SetUpdatedTime(t *testing.T) {
 	if claims.UpdatedTime == nil {
 		t.Fatal("expected UpdatedTime to be set")
 	}
-	if claims.UpdatedTime.Time.Unix() != now.Unix() {
+	if claims.UpdatedTime.Unix() != now.Unix() {
 		t.Error("UpdatedTime should match the set time")
 	}
 }
@@ -630,7 +630,7 @@ func TestOpenIDClaims_SetAuthTime(t *testing.T) {
 	if claims.AuthTime == nil {
 		t.Fatal("expected AuthTime to be set")
 	}
-	if claims.AuthTime.Time.Unix() != now.Unix() {
+	if claims.AuthTime.Unix() != now.Unix() {
 		t.Error("AuthTime should match the set time")
 	}
 }

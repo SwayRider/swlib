@@ -54,7 +54,6 @@ import (
 	"github.com/swayrider/grpcclients"
 	//"github.com/swayrider/swlib/flag"
 	log "github.com/swayrider/swlib/logger"
-	"github.com/swayrider/swlib/svcreg"
 )
 
 // Callback is a function type used for initializers and bootstrap functions.
@@ -171,7 +170,6 @@ type app struct {
 	httpStopFn  StopHttpServerFn
 
 	dbconn      DB
-	svcResolver *svcreg.Resolver
 	grpcServer  *grpc.Server
 	httpGateway  *http.Server
 	httpStaticServer HttpServer
@@ -422,7 +420,9 @@ func (a *app) Run() {
 
 func (a *app) runInitializers() {
 	for _, routine := range a.initializers {
-		routine(a)
+		if err := routine(a); err != nil {
+			a.lg.Errorf("initializer failed: %v", err)
+		}
 	}
 }
 

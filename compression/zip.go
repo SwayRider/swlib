@@ -79,7 +79,7 @@ func UnZip(zipPath, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Clean and resolve the destination directory for consistent comparison
 	destDir = filepath.Clean(destDir)
@@ -122,13 +122,13 @@ func extractFileContent(f *zip.File, fPath string) error {
 	if err != nil {
 		return err
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	outFile, err := os.Create(fPath)
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	_, err = io.Copy(outFile, rc)
 	return err
@@ -199,11 +199,11 @@ func Zip(sourcePath, destZipPath string, opts ...ZipOption) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create zip writer
 	zw := zip.NewWriter(file)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	// Get the base directory for calculating relative paths
 	baseDir := filepath.Dir(sourcePath)
@@ -242,7 +242,7 @@ func addToZip(zw *zip.Writer, sourcePath, baseDir string, compressionMethod uint
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 
 			if _, err := io.Copy(writer, file); err != nil {
 				return err

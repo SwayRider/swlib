@@ -32,7 +32,7 @@ func CompressGzip(data []byte, level int) ([]byte, error) {
 	}
 
 	if _, err := writer.Write(data); err != nil {
-		writer.Close()
+		_ = writer.Close()
 		return nil, err
 	}
 

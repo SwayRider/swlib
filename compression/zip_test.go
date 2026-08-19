@@ -15,10 +15,10 @@ func createTestZip(t *testing.T, zipPath string, files map[string]string) {
 	if err != nil {
 		t.Fatalf("failed to create zip file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := zip.NewWriter(f)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	for name, content := range files {
 		fw, err := w.Create(name)
@@ -39,10 +39,10 @@ func createTestZipWithDirs(t *testing.T, zipPath string, entries []zipEntry) {
 	if err != nil {
 		t.Fatalf("failed to create zip file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := zip.NewWriter(f)
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	for _, entry := range entries {
 		if entry.isDir {
@@ -445,9 +445,15 @@ func TestUnZip_ZipSlip_PathTraversal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create malicious entry: %v", err)
 	}
-	fw.Write([]byte("malicious content"))
-	w.Close()
-	f.Close()
+	if _, err := fw.Write([]byte("malicious content")); err != nil {
+		t.Fatalf("failed to write malicious entry: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close zip file: %v", err)
+	}
 
 	// UnZip should detect and reject the zip slip attempt
 	err = UnZip(zipPath, destDir)
@@ -482,9 +488,15 @@ func TestUnZip_ZipSlip_AbsolutePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create malicious entry: %v", err)
 	}
-	fw.Write([]byte("malicious content"))
-	w.Close()
-	f.Close()
+	if _, err := fw.Write([]byte("malicious content")); err != nil {
+		t.Fatalf("failed to write malicious entry: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close zip file: %v", err)
+	}
 
 	// UnZip should handle this safely
 	err = UnZip(zipPath, destDir)
@@ -520,9 +532,15 @@ func TestUnZip_ZipSlip_DotDotInMiddle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create malicious entry: %v", err)
 	}
-	fw.Write([]byte("trying to escape"))
-	w.Close()
-	f.Close()
+	if _, err := fw.Write([]byte("trying to escape")); err != nil {
+		t.Fatalf("failed to write malicious entry: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("failed to close zip writer: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("failed to close zip file: %v", err)
+	}
 
 	err = UnZip(zipPath, destDir)
 	if err != ErrZipSlip {
@@ -576,16 +594,16 @@ func BenchmarkUnZip_SmallFiles(b *testing.B) {
 	w := zip.NewWriter(f)
 	for i := 0; i < 10; i++ {
 		fw, _ := w.Create("file" + string(rune('0'+i)) + ".txt")
-		fw.Write([]byte("small content"))
+		_, _ = fw.Write([]byte("small content"))
 	}
-	w.Close()
-	f.Close()
+	_ = w.Close()
+	_ = f.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		os.MkdirAll(destDir, 0755)
-		UnZip(zipPath, destDir)
-		os.RemoveAll(destDir)
+		_ = os.MkdirAll(destDir, 0755)
+		_ = UnZip(zipPath, destDir)
+		_ = os.RemoveAll(destDir)
 	}
 }
 
@@ -599,15 +617,15 @@ func BenchmarkUnZip_LargeFile(b *testing.B) {
 	f, _ := os.Create(zipPath)
 	w := zip.NewWriter(f)
 	fw, _ := w.Create("large.txt")
-	fw.Write(largeContent)
-	w.Close()
-	f.Close()
+	_, _ = fw.Write(largeContent)
+	_ = w.Close()
+	_ = f.Close()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		os.MkdirAll(destDir, 0755)
-		UnZip(zipPath, destDir)
-		os.RemoveAll(destDir)
+		_ = os.MkdirAll(destDir, 0755)
+		_ = UnZip(zipPath, destDir)
+		_ = os.RemoveAll(destDir)
 	}
 }
 
@@ -642,7 +660,7 @@ func TestZip_CreateSingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 1 {
 		t.Fatalf("expected 1 file in zip, got %d", len(r.File))
@@ -658,15 +676,14 @@ func TestZip_CreateSingleFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open file in zip: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	content, err := os.ReadFile(sourceFile)
 	if err != nil {
 		t.Fatalf("failed to read source file: %v", err)
 	}
 
-	var buf []byte
-	buf = make([]byte, len(content))
+	buf := make([]byte, len(content))
 	_, err = rc.Read(buf)
 	if err != nil && err.Error() != "EOF" {
 		t.Fatalf("failed to read from zip: %v", err)
@@ -712,7 +729,7 @@ func TestZip_CreateMultipleFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 3 {
 		t.Fatalf("expected 3 files in zip, got %d", len(r.File))
@@ -734,7 +751,7 @@ func TestZip_CreateMultipleFiles(t *testing.T) {
 
 		buf := make([]byte, f.UncompressedSize64)
 		_, err = rc.Read(buf)
-		rc.Close()
+		_ = rc.Close()
 
 		if err != nil && err.Error() != "EOF" {
 			t.Errorf("failed to read file %s: %v", f.Name, err)
@@ -787,7 +804,7 @@ func TestZip_CreateWithDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 4 {
 		t.Fatalf("expected 4 files in zip, got %d", len(r.File))
@@ -840,7 +857,7 @@ func TestZip_WithZipDeflateOption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 1 {
 		t.Fatalf("expected 1 file in zip, got %d", len(r.File))
@@ -881,7 +898,7 @@ func TestZip_WithZipStoreOption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 1 {
 		t.Fatalf("expected 1 file in zip, got %d", len(r.File))
@@ -925,7 +942,7 @@ func TestZip_CreateLargeFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 1 {
 		t.Fatalf("expected 1 file in zip, got %d", len(r.File))
@@ -979,7 +996,7 @@ func TestZip_CreateWithUnicodeNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if len(r.File) != 3 {
 		t.Fatalf("expected 3 files in zip, got %d", len(r.File))
@@ -1104,7 +1121,7 @@ func TestZip_EmptyDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open created zip: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Empty directory should produce a zip with no files
 	if len(r.File) != 0 {
@@ -1136,8 +1153,8 @@ func BenchmarkZip_SmallFiles(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		zipPath := filepath.Join(tmpDir, "bench"+string(rune('0'+i%10))+".zip")
-		Zip(sourceDir, zipPath)
-		os.Remove(zipPath)
+		_ = Zip(sourceDir, zipPath)
+		_ = os.Remove(zipPath)
 	}
 }
 
@@ -1158,8 +1175,8 @@ func BenchmarkZip_LargeFile(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		zipPath := filepath.Join(tmpDir, "bench.zip")
-		Zip(sourceFile, zipPath)
-		os.Remove(zipPath)
+		_ = Zip(sourceFile, zipPath)
+		_ = os.Remove(zipPath)
 	}
 }
 
@@ -1180,8 +1197,8 @@ func BenchmarkZip_DeflateCompression(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		zipPath := filepath.Join(tmpDir, "bench.zip")
-		Zip(sourceFile, zipPath, WithZipDeflate())
-		os.Remove(zipPath)
+		_ = Zip(sourceFile, zipPath, WithZipDeflate())
+		_ = os.Remove(zipPath)
 	}
 }
 
@@ -1202,7 +1219,7 @@ func BenchmarkZip_StoreMethod(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		zipPath := filepath.Join(tmpDir, "bench.zip")
-		Zip(sourceFile, zipPath, WithZipStore())
-		os.Remove(zipPath)
+		_ = Zip(sourceFile, zipPath, WithZipStore())
+		_ = os.Remove(zipPath)
 	}
 }

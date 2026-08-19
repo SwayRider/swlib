@@ -49,12 +49,6 @@ func (a *app) configureSericeClient(clnt *ServiceClient) {
 	a.serviceClients[clnt.Name] = clnt
 }
 
-func (a *app) closeServiceClients() {
-	for _, clnt := range a.serviceClients {
-		clnt.client.Close()
-	}
-}
-
 // ServiceClientHostAndPort returns a function that retrieves the host and port
 // for a service client. It first checks configuration values, then falls back
 // to service discovery if available.

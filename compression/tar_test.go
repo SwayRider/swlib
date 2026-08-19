@@ -33,10 +33,10 @@ func createTestTar(t *testing.T, tarPath string, files map[string]string) {
 
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	tw := tar.NewWriter(file)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for name, content := range files {
 		header := &tar.Header{
@@ -58,13 +58,13 @@ func createTestTarGzip(t *testing.T, tarPath string, files map[string]string) {
 
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gw := gzip.NewWriter(file)
-	defer gw.Close()
+	defer func() { _ = gw.Close() }()
 
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for name, content := range files {
 		header := &tar.Header{
@@ -86,14 +86,14 @@ func createTestTarBzip2(t *testing.T, tarPath string, files map[string]string) {
 
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	bw, err := bzip2writer.NewWriter(file, &bzip2writer.WriterConfig{Level: 9})
 	require.NoError(t, err)
-	defer bw.Close()
+	defer func() { _ = bw.Close() }()
 
 	tw := tar.NewWriter(bw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for name, content := range files {
 		header := &tar.Header{
@@ -115,10 +115,10 @@ func createTestTarWithDirs(t *testing.T, tarPath string, entries []tarEntry) {
 
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	tw := tar.NewWriter(file)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for _, entry := range entries {
 		header := &tar.Header{
@@ -146,10 +146,10 @@ func createTestTarWithSymlinks(t *testing.T, tarPath string, entries []tarEntry)
 
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	tw := tar.NewWriter(file)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for _, entry := range entries {
 		header := &tar.Header{
@@ -260,8 +260,8 @@ func TestUnTar_EmptyTar(t *testing.T) {
 	file, err := os.Create(tarPath)
 	require.NoError(t, err)
 	tw := tar.NewWriter(file)
-	tw.Close()
-	file.Close()
+	require.NoError(t, tw.Close())
+	require.NoError(t, file.Close())
 
 	err = UnTar(tarPath, destDir)
 	require.NoError(t, err)
@@ -636,7 +636,7 @@ func TestTar_CreateGzip(t *testing.T) {
 	// Verify it's actually gzip compressed
 	file, err := os.Open(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Try to open as gzip
 	_, err = gzip.NewReader(file)
@@ -711,7 +711,7 @@ func TestTar_WithGzipCompressionOption(t *testing.T) {
 	// Verify it's gzip compressed despite .tar extension
 	file, err := os.Open(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = gzip.NewReader(file)
 	assert.NoError(t, err, "File should be gzip compressed")
@@ -734,7 +734,7 @@ func TestTar_WithBzip2CompressionOption(t *testing.T) {
 	// We need to manually extract since UnTar detects by extension
 	file, err := os.Open(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Should be able to read as bzip2
 	br := bzip2.NewReader(file)
@@ -761,7 +761,7 @@ func TestTar_WithNoCompressionOption(t *testing.T) {
 	// Verify it's NOT gzip compressed despite .tar.gz extension
 	file, err := os.Open(tarPath)
 	require.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Should be able to read directly as tar without gzip
 	tr := tar.NewReader(file)
@@ -1110,8 +1110,8 @@ func TestUnTar_EmptyFileName(t *testing.T) {
 		Typeflag: tar.TypeDir,
 	}
 	require.NoError(t, tw.WriteHeader(header))
-	tw.Close()
-	file.Close()
+	require.NoError(t, tw.Close())
+	require.NoError(t, file.Close())
 
 	// Should handle gracefully
 	err = UnTar(tarPath, destDir)

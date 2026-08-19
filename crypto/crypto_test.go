@@ -464,7 +464,7 @@ func TestGenerateSecureRandomString(t *testing.T) {
 
 		// Verify it's valid hex
 		for _, c := range result {
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 				t.Errorf("expected hex characters, got: %c", c)
 			}
 		}
