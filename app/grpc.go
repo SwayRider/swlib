@@ -197,11 +197,13 @@ func (a *app) startGrpc() {
 	}
 
 	for _, r := range a.grpcConfig.ServiceRegistrars {
-		r.ServiceHTTPHandler(
+		if err := r.ServiceHTTPHandler(
 			context.Background(),
 			mux,
 			fmt.Sprintf("[::]:%d", grpcPort),
-			gwOpts)
+			gwOpts); err != nil {
+			lg.Fatalf("failed to register HTTP handler: %v", err)
+		}
 	}
 
 	corsOrigins := []string{
@@ -216,7 +218,7 @@ func (a *app) startGrpc() {
 		}
 	}
 
-	var handler http.Handler = cors.New(cors.Options{
+	handler := cors.New(cors.Options{
 		AllowedHeaders:   []string{"*"},
 		AllowedMethods:   []string{"OPTIONS", "GET", "POST"},
 		AllowedOrigins:   corsOrigins,

@@ -42,9 +42,15 @@ func TestStringArr_Set_SingleValue(t *testing.T) {
 func TestStringArr_Set_Multiple(t *testing.T) {
 	var arr StringArr
 
-	arr.Set("first")
-	arr.Set("second")
-	arr.Set("third")
+	if err := arr.Set("first"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("second"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("third"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(arr) != 3 {
 		t.Fatalf("expected 3 elements, got %d", len(arr))
@@ -120,7 +126,9 @@ func TestStringArrayParser_WithFlagSet(t *testing.T) {
 	// Pass nil default since we're testing flag parsing
 	result := parser("hosts", nil, "host list")
 
-	fs.Parse([]string{"-hosts", "host1", "-hosts", "host2"})
+	if err := fs.Parse([]string{"-hosts", "host1", "-hosts", "host2"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 elements, got %d: %v", len(*result), *result)
@@ -136,7 +144,9 @@ func TestStringArrayParser_DefaultValue(t *testing.T) {
 
 	result := parser("hosts", StringArr{"default1", "default2"}, "host list")
 
-	fs.Parse([]string{})
+	if err := fs.Parse([]string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 default elements, got %d: %v", len(*result), *result)
@@ -193,9 +203,15 @@ func TestIntArr_Set_SingleValue(t *testing.T) {
 func TestIntArr_Set_Multiple(t *testing.T) {
 	var arr IntArr
 
-	arr.Set("10")
-	arr.Set("20")
-	arr.Set("30")
+	if err := arr.Set("10"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("20"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("30"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(arr) != 3 {
 		t.Fatalf("expected 3 elements, got %d", len(arr))
@@ -287,7 +303,9 @@ func TestIntArrayParser_WithFlagSet(t *testing.T) {
 	// Pass nil default since we're testing flag parsing
 	result := parser("ports", nil, "port list")
 
-	fs.Parse([]string{"-ports", "80", "-ports", "443"})
+	if err := fs.Parse([]string{"-ports", "80", "-ports", "443"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 elements, got %d: %v", len(*result), *result)
@@ -303,7 +321,9 @@ func TestIntArrayParser_DefaultValue(t *testing.T) {
 
 	result := parser("ports", IntArr{8080, 8081}, "port list")
 
-	fs.Parse([]string{})
+	if err := fs.Parse([]string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 default elements, got %d: %v", len(*result), *result)
@@ -347,9 +367,15 @@ func TestFloatArr_Set_SingleValue(t *testing.T) {
 func TestFloatArr_Set_Multiple(t *testing.T) {
 	var arr FloatArr
 
-	arr.Set("1.0")
-	arr.Set("2.0")
-	arr.Set("3.0")
+	if err := arr.Set("1.0"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("2.0"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("3.0"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(arr) != 3 {
 		t.Fatalf("expected 3 elements, got %d", len(arr))
@@ -453,7 +479,9 @@ func TestFloatArrayParser_WithFlagSet(t *testing.T) {
 	// Pass nil default since we're testing flag parsing
 	result := parser("weights", nil, "weights")
 
-	fs.Parse([]string{"-weights", "0.5", "-weights", "0.3"})
+	if err := fs.Parse([]string{"-weights", "0.5", "-weights", "0.3"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 elements, got %d: %v", len(*result), *result)
@@ -469,7 +497,9 @@ func TestFloatArrayParser_DefaultValue(t *testing.T) {
 
 	result := parser("weights", FloatArr{0.5, 0.3, 0.2}, "weights")
 
-	fs.Parse([]string{})
+	if err := fs.Parse([]string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 3 {
 		t.Fatalf("expected 3 default elements, got %d: %v", len(*result), *result)
@@ -513,9 +543,15 @@ func TestBoolArr_Set_SingleValue(t *testing.T) {
 func TestBoolArr_Set_Multiple(t *testing.T) {
 	var arr BoolArr
 
-	arr.Set("true")
-	arr.Set("false")
-	arr.Set("true")
+	if err := arr.Set("true"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("false"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := arr.Set("true"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(arr) != 3 {
 		t.Fatalf("expected 3 elements, got %d", len(arr))
@@ -619,7 +655,9 @@ func TestBoolArrayParser_WithFlagSet(t *testing.T) {
 	// Pass nil default since we're testing flag parsing
 	result := parser("flags", nil, "flags")
 
-	fs.Parse([]string{"-flags", "true", "-flags", "false"})
+	if err := fs.Parse([]string{"-flags", "true", "-flags", "false"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 elements, got %d: %v", len(*result), *result)
@@ -635,7 +673,9 @@ func TestBoolArrayParser_DefaultValue(t *testing.T) {
 
 	result := parser("flags", BoolArr{true, false}, "flags")
 
-	fs.Parse([]string{})
+	if err := fs.Parse([]string{}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	if len(*result) != 2 {
 		t.Fatalf("expected 2 default elements, got %d: %v", len(*result), *result)
@@ -649,55 +689,55 @@ func TestBoolArrayParser_DefaultValue(t *testing.T) {
 func BenchmarkStringArr_Set_Single(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr StringArr
-		arr.Set("value")
+		_ = arr.Set("value")
 	}
 }
 
 func BenchmarkStringArr_Set_CommaSeparated(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr StringArr
-		arr.Set("a,b,c,d,e")
+		_ = arr.Set("a,b,c,d,e")
 	}
 }
 
 func BenchmarkIntArr_Set_Single(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr IntArr
-		arr.Set("42")
+		_ = arr.Set("42")
 	}
 }
 
 func BenchmarkIntArr_Set_CommaSeparated(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr IntArr
-		arr.Set("1,2,3,4,5")
+		_ = arr.Set("1,2,3,4,5")
 	}
 }
 
 func BenchmarkFloatArr_Set_Single(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr FloatArr
-		arr.Set("3.14")
+		_ = arr.Set("3.14")
 	}
 }
 
 func BenchmarkFloatArr_Set_CommaSeparated(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr FloatArr
-		arr.Set("1.0,2.0,3.0,4.0,5.0")
+		_ = arr.Set("1.0,2.0,3.0,4.0,5.0")
 	}
 }
 
 func BenchmarkBoolArr_Set_Single(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr BoolArr
-		arr.Set("true")
+		_ = arr.Set("true")
 	}
 }
 
 func BenchmarkBoolArr_Set_CommaSeparated(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var arr BoolArr
-		arr.Set("true,false,true,false,true")
+		_ = arr.Set("true,false,true,false,true")
 	}
 }

@@ -194,7 +194,9 @@ func VerifyToken(
 		return
 	}
 	jwtClaims = &Claims{}
-	jwtClaims.FromMapClaims(mapClaims)
+	if err = jwtClaims.FromMapClaims(mapClaims); err != nil {
+		return
+	}
 
 	// Verify NotBefore
 	if opts&VerifyOmitClaimsValidation == VerifyOmitClaimsValidation &&
@@ -266,7 +268,7 @@ func GenerateToken(
 func mapField[T any](m map[string]any, key string) (T, error) {
 	var zero T
 	tType := reflect.TypeOf(zero)
-	required := tType.Kind() != reflect.Ptr
+	required := tType.Kind() != reflect.Pointer
 
 	v, ok := m[key]
 	if !ok {

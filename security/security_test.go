@@ -916,7 +916,7 @@ func BenchmarkEvaluate_ValidToken(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		profile.Evaluate(&token, getTestPublicKeys, testLogger)
+		_, _ = profile.Evaluate(&token, getTestPublicKeys, testLogger)
 	}
 }
 

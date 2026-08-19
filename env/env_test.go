@@ -20,16 +20,18 @@ func setEnv(t *testing.T, key, value string) {
 		t.Fatalf("failed to set env var: %v", err)
 	}
 	t.Cleanup(func() {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	})
 }
 
 // Helper to unset environment variable
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
-	os.Unsetenv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("failed to unset env var: %v", err)
+	}
 	t.Cleanup(func() {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	})
 }
 
@@ -616,8 +618,7 @@ func TestEdgeCase_LargeIntArray(t *testing.T) {
 // =============================================================================
 
 func BenchmarkGet(b *testing.B) {
-	os.Setenv(testEnvKey, "benchmark-value")
-	defer os.Unsetenv(testEnvKey)
+	b.Setenv(testEnvKey, "benchmark-value")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -626,8 +627,7 @@ func BenchmarkGet(b *testing.B) {
 }
 
 func BenchmarkGetAsInt(b *testing.B) {
-	os.Setenv(testEnvKeyInt, "12345")
-	defer os.Unsetenv(testEnvKeyInt)
+	b.Setenv(testEnvKeyInt, "12345")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -636,8 +636,7 @@ func BenchmarkGetAsInt(b *testing.B) {
 }
 
 func BenchmarkGetAsFloat64(b *testing.B) {
-	os.Setenv(testEnvKey, "123.456")
-	defer os.Unsetenv(testEnvKey)
+	b.Setenv(testEnvKey, "123.456")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -646,8 +645,7 @@ func BenchmarkGetAsFloat64(b *testing.B) {
 }
 
 func BenchmarkGetAsBool(b *testing.B) {
-	os.Setenv(testEnvKeyBool, "true")
-	defer os.Unsetenv(testEnvKeyBool)
+	b.Setenv(testEnvKeyBool, "true")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -656,8 +654,7 @@ func BenchmarkGetAsBool(b *testing.B) {
 }
 
 func BenchmarkGetAsStringArr(b *testing.B) {
-	os.Setenv(testEnvKeyArr, "a,b,c,d,e")
-	defer os.Unsetenv(testEnvKeyArr)
+	b.Setenv(testEnvKeyArr, "a,b,c,d,e")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -666,8 +663,7 @@ func BenchmarkGetAsStringArr(b *testing.B) {
 }
 
 func BenchmarkGetAsIntArr(b *testing.B) {
-	os.Setenv(testEnvKeyArr, "1,2,3,4,5")
-	defer os.Unsetenv(testEnvKeyArr)
+	b.Setenv(testEnvKeyArr, "1,2,3,4,5")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

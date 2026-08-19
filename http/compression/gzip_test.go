@@ -159,7 +159,7 @@ func TestCompressGzip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create gzip reader: %v", err)
 			}
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 
 			decompressed, err := io.ReadAll(reader)
 			if err != nil {

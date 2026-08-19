@@ -69,7 +69,9 @@ func (c Config) Parse(flagSet ...*flag.FlagSet) (err error) {
 	}
 	for _, fs := range flagSet {
 		if fs != nil {
-			fs.Parse(args)
+			if err = fs.Parse(args); err != nil {
+				return
+			}
 		}
 	}
 	if len(flagSet) == 0 {

@@ -62,7 +62,7 @@ func UnTar(tarPath, destDir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Detect compression type
 	compression := detectCompression(tarPath)
@@ -73,7 +73,7 @@ func UnTar(tarPath, destDir string) error {
 		return err
 	}
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	// Clean and resolve the destination directory for consistent comparison
@@ -196,7 +196,7 @@ func extractTarFileContent(header *tar.Header, reader *tar.Reader, targetPath st
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Copy content
 	_, err = io.Copy(outFile, reader)
@@ -323,16 +323,16 @@ func Tar(sourcePath, destTarPath string, opts ...TarOption) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create tar writer with appropriate compression
 	tw, closer, err := createTarWriter(file, config.compression)
 	if err != nil {
 		return err
 	}
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	// Get the base directory for calculating relative paths
@@ -398,7 +398,7 @@ func addToTar(tw *tar.Writer, sourcePath, baseDir string) error {
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 
 			if _, err := io.Copy(tw, file); err != nil {
 				return err
