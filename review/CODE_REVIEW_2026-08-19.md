@@ -4,9 +4,11 @@ Security-focused review of the full current codebase of `swlib` (not diff-based)
 
 Verified clean: crypto primitives are solid — Argon2id with OWASP-recommended parameters (`swlib/crypto/hashing.go`), `crypto/rand` used throughout (`hashing.go`, `keypair.go`, `random.go`, the one `math/rand` hit is in `svcreg/resolver.go` for load-balancing jitter, not security-relevant), constant-time comparison via `subtle.ConstantTimeCompare`, 3072-bit RSA keys for JWT signing. CORS wildcard+credentials misconfiguration is explicitly guarded (`app/grpc.go` `validateCORSOrigins`). Rate-limit interceptors correctly distrust client-suppliable headers and use real transport peer addresses. `Config.Parse` doesn't log secret values. No secrets found logged anywhere in the module.
 
-### 1. `MimeType` middleware panics on any path without a dot
+### 1. ~~`MimeType` middleware panics on any path without a dot~~ — FIXED 2026-08-19
 
 `swlib/http/middlewares/mimetype.go:22`: `r.URL.Path[strings.LastIndex(r.URL.Path, "."):]`. `strings.LastIndex` returns `-1` when there's no `.` in the path, so this slices `path[-1:]` and panics ("slice bounds out of range") on every request whose path has no extension — i.e. virtually all API/page routes (`/`, `/login`, `/api/users`, etc.). Go's `net/http` recovers per-connection panics so it degrades to a dropped connection/500 rather than a process crash, but any service that mounts this (it's documented as the recommended static-file-server middleware) would break on most requests and be trivially poundable for wasted CPU/goroutine churn. Currently not referenced by any service (only in a doc comment), so no live blast radius yet, but it's a landmine for the next adopter. Severity: High.
+
+Replaced the manual slice with `path.Ext(r.URL.Path)`, which returns `""` instead of panicking when the path has no dot. Added `mimetype_test.go` covering a known extension, no-dot paths, an unknown extension, and a trailing-dot path. `go build`, `go vet`, and the full `go test ./...` (471 tests) pass. Committed on branch `fix/mimetype-path-ext`.
 
 ### 2. `jwt.VerifyToken` silently discards the error from claim mapping
 
