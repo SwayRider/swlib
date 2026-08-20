@@ -53,11 +53,43 @@ var (
 // cookieNamespace is the prefix applied to all cookie names.
 var cookieNamespace = "com.hevanto-it.swayrider"
 
+// defaultSameSite is the SameSite policy applied to cookies when the caller
+// does not explicitly set one via CookieOpts. Configure it once at service
+// startup with SetDefaultSameSite; the default is Lax.
+var defaultSameSite = http.SameSiteLaxMode
+
 // SetNamespace sets the namespace prefix used for all cookie names.
 // Call this once at service startup before any requests are handled.
 // An empty string disables namespacing (cookies use their bare names).
 func SetNamespace(ns string) {
 	cookieNamespace = ns
+}
+
+// SetDefaultSameSite sets the SameSite policy applied to cookies when the
+// caller does not explicitly set one via CookieOpts. Call this once at
+// service startup before any requests are handled.
+func SetDefaultSameSite(s http.SameSite) {
+	defaultSameSite = s
+}
+
+// ParseSameSite parses a SameSite policy string into an http.SameSite value.
+// The input is case-insensitive and an empty string selects the recommended
+// default (Strict). "none" is deliberately unsupported: it requires the
+// Secure flag, which callers cannot guarantee for every request. On any
+// unrecognized value it returns Strict alongside an error so callers can log
+// and still land on a valid policy.
+func ParseSameSite(s string) (http.SameSite, error) {
+	switch strings.ToLower(s) {
+	case "":
+		return http.SameSiteStrictMode, nil
+	case "strict":
+		return http.SameSiteStrictMode, nil
+	case "lax":
+		return http.SameSiteLaxMode, nil
+	default:
+		return http.SameSiteStrictMode, fmt.Errorf(
+			"unsupported SameSite value %q (expected \"strict\" or \"lax\")", s)
+	}
 }
 
 // FullCookieName returns the full namespaced cookie name.
@@ -75,7 +107,7 @@ type CookieOpts struct {
 	domain   string        // Domain restriction for the cookie
 	ttl      time.Duration // Time-to-live for the cookie
 	path     string        // Path scope; overrides default "/" when non-empty
-	sameSite http.SameSite // SameSite policy; overrides default Lax when non-zero
+	sameSite http.SameSite // SameSite policy; overrides the configured default when non-zero
 }
 
 // NewCookieOpts creates CookieOpts with default values (not secure, no domain, default TTL).
@@ -128,7 +160,8 @@ func (co *CookieOpts) SetSameSite(s http.SameSite) {
 
 // NewServerCookie creates a new HTTP cookie with the given name and data.
 // The data is base64-encoded before being stored in the cookie value.
-// Cookies are created with HttpOnly flag and SameSite=Lax by default.
+// Cookies are created with the HttpOnly flag and the configured SameSite
+// policy (Lax unless SetDefaultSameSite is called).
 //
 // If opts is provided, the first CookieOpts is used to configure
 // secure flag, TTL, domain, path, and SameSite policy.
@@ -142,7 +175,7 @@ func NewServerCookie(name string, data []byte, opts ...CookieOpts) *http.Cookie 
 		HttpOnly: true,
 		Secure:   false,
 		MaxAge:   int(TTLDefault.Seconds()),
-		SameSite: http.SameSiteLaxMode,
+		SameSite: defaultSameSite,
 	}
 
 	if len(opts) > 0 {
@@ -171,7 +204,7 @@ func ClearCookie(name string, opts ...CookieOpts) *http.Cookie {
 		HttpOnly: true,
 		Secure:   false,
 		MaxAge:   -1,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: defaultSameSite,
 	}
 
 	if len(opts) > 0 {
