@@ -23,6 +23,7 @@ SwLib is a comprehensive Go library providing reusable components for building m
   - [ratelimit - Request Rate Limiting](#ratelimit---request-rate-limiting)
   - [security - Authorization Framework](#security---authorization-framework)
   - [str - String Utilities](#str---string-utilities)
+  - [totp - TOTP & MFA Primitives](#totp---totp--mfa-primitives)
 - [Architecture Overview](#architecture-overview)
 - [Best Practices](#best-practices)
 
@@ -1199,6 +1200,33 @@ func processString() {
     emptyPtr := str.ToPtr(empty) // nil
 }
 ```
+
+---
+
+### totp - TOTP & MFA Primitives
+
+Stdlib-only implementation of time-based one-time passwords (RFC 6238) plus the surrounding MFA primitives: random base32 secrets, `otpauth://` URIs, and unambiguous backup codes. Used by authservice for second-factor authentication.
+
+```go
+import "github.com/swayrider/swlib/totp"
+
+// Generate a 20-byte secret as unpadded uppercase base32 (32 chars)
+secret, err := totp.GenerateSecret(0)
+
+// Current 6-digit code for the secret
+code, err := totp.GenerateCode(secret, time.Now(), totp.Config{})
+
+// Validate with ±1 window of clock-skew tolerance
+ok, err := totp.Validate(secret, code, time.Now(), totp.Config{GracePeriod: 1})
+
+// otpauth:// URI for an authenticator app (or a server-side QR encoder)
+uri := totp.GenerateOTPAuthURL(secret, "user@example.com", "SwayRider")
+
+// 10 single-use backup codes (8 chars, Crockford base32 — no I/L/O/U)
+codes, err := totp.GenerateBackupCodes(10, 8)
+```
+
+The package is deliberately **stdlib-only** (`crypto/hmac`, `crypto/sha1`, `crypto/rand`, `encoding/base32`, `crypto/subtle`) so the shared module stays dependency-light — the same precedent as `hibp`. QR rendering and other third-party-dependent pieces live in the services that need them, not here. All code/time functions take the evaluation time as a parameter so callers and tests can pin the clock; `GenerateCode`/`Validate` are verified against the RFC 6238 Appendix B test vectors.
 
 ---
 
