@@ -39,7 +39,7 @@ func TestIsBreached_OnlyPrefixLeavesTheServer(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		fmt.Fprintf(w, "%s:5\n", strings.ToUpper(hash[5:]))
+		_, _ = fmt.Fprintf(w, "%s:5\n", strings.ToUpper(hash[5:]))
 	}))
 	defer srv.Close()
 
@@ -72,7 +72,7 @@ func TestIsBreached_HeadersPresent(t *testing.T) {
 		if r.Header.Get("Add-Padding") != "true" {
 			t.Errorf("Add-Padding = %q, want \"true\"", r.Header.Get("Add-Padding"))
 		}
-		fmt.Fprintln(w, "ABCDEF01:3")
+		_, _ = fmt.Fprintln(w, "ABCDEF01:3")
 	}))
 	defer srv.Close()
 
@@ -89,7 +89,7 @@ func TestIsBreached_SuffixMatchIsCaseInsensitive(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Respond with the lowercase suffix even though the API returns
 		// uppercase; matching must be case-insensitive.
-		fmt.Fprintf(w, "%s:7\n", strings.ToLower(hash[5:]))
+		_, _ = fmt.Fprintf(w, "%s:7\n", strings.ToLower(hash[5:]))
 	}))
 	defer srv.Close()
 
@@ -105,7 +105,7 @@ func TestIsBreached_SuffixMatchIsCaseInsensitive(t *testing.T) {
 
 func TestIsBreached_NoMatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "DEADBEEF:123")
+		_, _ = fmt.Fprintln(w, "DEADBEEF:123")
 	}))
 	defer srv.Close()
 
@@ -127,7 +127,7 @@ func TestIsBreached_CountBelowMinCount(t *testing.T) {
 	hash := sha1Hex(password)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s:2\n", hash[5:])
+		_, _ = fmt.Fprintf(w, "%s:2\n", hash[5:])
 	}))
 	defer srv.Close()
 
@@ -150,9 +150,9 @@ func TestIsBreached_PaddingEntriesAreIgnored(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Add-Padding appends dummy entries that may lack counts entirely.
-		fmt.Fprintln(w, "AAAAAAAAAA")
-		fmt.Fprintf(w, "%s:9\n", hash[5:])
-		fmt.Fprintln(w, "BBBBBBBBBB:0")
+		_, _ = fmt.Fprintln(w, "AAAAAAAAAA")
+		_, _ = fmt.Fprintf(w, "%s:9\n", hash[5:])
+		_, _ = fmt.Fprintln(w, "BBBBBBBBBB:0")
 	}))
 	defer srv.Close()
 
@@ -205,7 +205,7 @@ func TestIsBreached_DisabledMakesNoNetworkCall(t *testing.T) {
 
 func TestIsBreached_ContextCancellation(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ABCDEF01:1")
+		_, _ = fmt.Fprintln(w, "ABCDEF01:1")
 	}))
 	defer srv.Close()
 

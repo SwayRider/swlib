@@ -87,7 +87,7 @@ func (c *Client) IsBreached(ctx context.Context, password string) (bool, int, er
 		c.l.Warnf("pwned passwords API request failed: %v", err)
 		return false, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("pwned passwords API returned status %d", resp.StatusCode)
