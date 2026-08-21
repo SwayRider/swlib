@@ -14,6 +14,7 @@ SwLib is a comprehensive Go library providing reusable components for building m
   - [env - Environment Variables](#env---environment-variables)
   - [flag - CLI Flag Parsing](#flag---cli-flag-parsing)
   - [grpc - gRPC Utilities](#grpc---grpc-utilities)
+  - [hibp - Pwned Passwords Breach Checks](#hibp---pwned-passwords-breach-checks)
   - [http - HTTP Middleware](#http---http-middleware)
   - [jwt - JWT Token Management](#jwt---jwt-token-management)
   - [jwtkeys - JWT Public Key Cache](#jwtkeys---jwt-public-key-cache)
@@ -602,6 +603,23 @@ func callOtherService(ctx context.Context, authClient *authclient.Client) (*pb.R
     return response, err
 }
 ```
+
+---
+
+### hibp - Pwned Passwords Breach Checks
+
+Privacy-preserving client for the Have I Been Pwned [Pwned Passwords](https://haveibeenpwned.com/Passwords) range API. Used by authservice to reject passwords that have appeared in a known data breach.
+
+```go
+import "github.com/swayrider/swlib/hibp"
+
+// enabled=true, 3s timeout, reject passwords seen at least once in breach data
+client := hibp.New(true, 3*time.Second, 1, l)
+
+breached, count, err := client.IsBreached(ctx, password)
+```
+
+Uses the **k-anonymity range protocol**: only the first 5 characters of the uppercase SHA-1 hash are sent to the API, so the password (and its full hash) never leave the server. The API is free and requires no API key. Any API error (timeout, rate limit, non-200) is returned to the caller, which is expected to **fail open** — an HIBP outage must never block users. `hibp.New(false, ...)` short-circuits every check without a network call.
 
 ---
 
