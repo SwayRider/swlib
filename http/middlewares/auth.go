@@ -77,27 +77,18 @@ func auth(
 				tokenStr = &ts
 			}
 		} else {
-			bytes, err := cookies.DecodeValue(cookie)
-			if err != nil {
-				lg.Debugf("authorization error: %v", err)
-				if isWebPage && r.Method == http.MethodGet {
-					callback := r.URL.Query().Get("callback")
-					if callback == "" {
-						callback = r.URL.Path
-					}
-					loginUrl := fmt.Sprintf(
-						"%s/login?callback=%s&r=1",
-						server,
-						url.QueryEscape(callback))
-					http.Redirect(w, r, loginUrl, http.StatusSeeOther)
-					return
-				}
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
+			bytes, decodeErr := cookies.DecodeValue(cookie)
+			if decodeErr != nil {
+				// A cookie that fails to decode (stale, foreign, or
+				// corrupted) is no better than no cookie at all -- fall
+				// through with tokenStr left nil so the AllowPublic check
+				// below gets a chance to run, instead of hard-401ing every
+				// request regardless of whether the endpoint is public.
+				lg.Debugf("authorization error: %v", decodeErr)
+			} else {
+				str := string(bytes)
+				tokenStr = &str
 			}
-
-			str := string(bytes)
-			tokenStr = &str
 		}
 
 		profile := security.GetEndpointProfileForMethod(r.URL.Path, r.Method)
